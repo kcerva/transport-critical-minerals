@@ -152,17 +152,76 @@ def main(config):
         subprocess.run(args)
 
 
-    run_script = True
+    run_script = False
     if run_script is True:
-        num_blocks = 0
-        with open("optimisation_set.txt","w+") as f:
+        num_blocks = 3
+        all_scenarios = []
+        distance_filters = [(x,y) for x in [0,500,1000] for y in [0,10,20]]  # for a list
+        print (distance_filters)
+        ref_mins = [["cobalt"],["copper"],["nickel"],["graphite"],["manganese"],["lithium"]]
+        baseline_scenario = [[2022],"baseline","none","country","unconstrained"]
+        for rf in ref_mins:    
+            all_scenarios.append([rf] + baseline_scenario)
+        ref_mins = [["cobalt","copper","nickel"],["graphite"],["manganese"],["lithium"]]
+        p = "min_threshold_metal_tons"
+        c = "country"
+        yrs = [2030,2040]
+        for rf in ref_mins:
+            for s in ["low","mid","high"]:
+                for o in ["unconstrained","constrained"]:
+                    if o == "constrained":
+                        for idx,(op,ef) in enumerate(distance_filters):
+                            all_scenarios.append([rf] + [yrs] + [s,p,c,o,baseline_year,op,ef])
+                    else:
+                        all_scenarios.append([rf] + [yrs] + [s,p,c,o])
+        p = "max_threshold_metal_tons"
+        c = "region"
+        yrs = [2030,2040]
+        for rf in ref_mins:
+            for s in ["low","mid","high"]:
+                for o in ["unconstrained","constrained"]:
+                    if o == "constrained":
+                        for idx,(op,ef) in enumerate(distance_filters):
+                            all_scenarios.append([rf] + [yrs] + [s,p,c,o,baseline_year,op,ef])
+                    else:
+                        all_scenarios.append([rf] + [yrs] + [s,p,c,o])
+
+        with open("combination_set.txt","w+") as f:
+            for row in all_scenarios:
+                st = ""
+                for r in row[:-1]:
+                    st += f"{r};"
+                st += f"{row[-1]}\n"
+                f.write(st)               
+        f.close()
+
+        """Next we run the optimsation script
+        """
+        args = [
+                "parallel",
+                "-j", str(num_blocks),
+                "--colsep", ";",
+                "-a",
+                "combination_set.txt",
+                "python",
+                "optimisation_combined.py",
+                "{}"
+                ]
+        print ("* Start the processing of plotting flows")
+        print (args)
+        subprocess.run(args)
+
+    run_script = False
+    if run_script is True:
+        distance_filters = [(x,y) for x in [0,500,1000] for y in [0,10,20]]  # for a list
+        c = "combined"
+        with open("combined_optimisation_set.txt","w+") as f:
             for idx, (year,percentile) in enumerate(year_percentile_combinations):
-                num_blocks += 1
                 if year == baseline_year:
                     th = "none"
                     loc = "country"
                     opt = "unconstrained"
-                    f.write(f"{year},{percentile},{th},{loc},{opt}\n")
+                    f.write(f"{year},{percentile},{th},{loc},{opt},{c},0.0,0.0\n")
                 else:
                     for loc in location_cases:
                         if loc == "country":
@@ -170,53 +229,57 @@ def main(config):
                         else:
                             th = "max_threshold_metal_tons"
                         for opt in optimisation_type:
-                            f.write(f"{year},{percentile},{th},{loc},{opt}\n")                    
+                            if opt == "constrained":
+                                for idx,(op,ef) in enumerate(distance_filters):
+                                    f.write(f"{year},{percentile},{th},{loc},{opt},{c},{op},{ef}\n")
+                            else:
+                                f.write(f"{year},{percentile},{th},{loc},{opt},{c},0.0,0.0\n")
+
         f.close()
 
-        """Next we call the flow analysis script and loop through the scenarios
-        """
-        args = [
-                "parallel",
-                "-j", str(num_blocks),
-                "--colsep", ",",
-                "-a",
-                "optimisation_set.txt",
-                "python",
-                "flow_location_optimisation_v2.py",
-                "{}"
-                ]
-        print ("* Start the processing of flow location optimisation")
-        print (args)
-        subprocess.run(args)
-
-    run_script = True
+    run_script = False
     if run_script is True:
-        with open("optimisation_set.txt","r") as r:
+        with open("combined_optimisation_set.txt","r") as r:
             for p in r:
                 pv = p.split(",")
-                opt = pv[4].strip('\n')
+                ls = pv[-1].strip('\n')
                 args = [
                         "python",
-                        "processing_locations_for_energy.py",
-                        f"{pv[0]}",
-                        f"{pv[1]}",
-                        f"{pv[2]}",
-                        f"{pv[3]}",
-                        f"{opt}"
+                        "processing_locations_for_energy.py"
                         ]
+                for v in pv[:-1]:
+                    args.append(v)
+                args.append(ls)
                 print ("* Start the processing of assembling locations for energy calculations")
                 print (args)
                 subprocess.run(args)  
 
     run_script = True
     if run_script is True:
-        num_blocks = 12
+        num_blocks = 16
         args = [
                 "parallel",
                 "-j", str(num_blocks),
                 "--colsep", ",",
                 "-a",
-                "optimisation_set.txt",
+                "combined_optimisation_set.txt",
+                "python",
+                "production_cost_estimation.py",
+                "{}"
+                ]
+        print ("* Start the processing of production cost estimations")
+        print (args)
+        subprocess.run(args)
+
+    run_script = False
+    if run_script is True:
+        num_blocks = 16
+        args = [
+                "parallel",
+                "-j", str(num_blocks),
+                "--colsep", ",",
+                "-a",
+                "combined_optimisation_set.txt",
                 "python",
                 "country_totals_tons_and_costs.py",
                 "{}"
@@ -224,36 +287,35 @@ def main(config):
         print ("* Start the processing of tonnage summaries")
         print (args)
         subprocess.run(args)
-        # with open("optimisation_set.txt","r") as r:
+        
+        # with open("combined_optimisation_set.txt","r") as r:
         #     for p in r:
         #         pv = p.split(",")
-        #         opt = pv[4].strip('\n')
+        #         ls = pv[-1].strip('\n')
         #         args = [
         #                 "python",
-        #                 "country_totals_tons_and_costs.py",
-        #                 f"{pv[0]}",
-        #                 f"{pv[1]}",
-        #                 f"{pv[2]}",
-        #                 f"{pv[3]}",
-        #                 f"{opt}"
+        #                 "country_totals_tons_and_costs.py"
         #                 ]
+        #         for v in pv[:-1]:
+        #             args.append(v)
+        #         args.append(ls)
         #         print ("* Start the processing of tonnage summaries")
         #         print (args)
         #         subprocess.run(args)
 
-    run_script = True
+    run_script = False
     if run_script is True:
-        # reference_minerals = ["cobalt"]
-        num_blocks = 0
-        with open("flow_set.txt","w+") as f:
+        num_blocks = 16
+        distance_filters = [(x,y) for x in [0,500,1000] for y in [0,10,20]]  # for a list
+        c = "combined"
+        with open("combined_flow_set.txt","w+") as f:
             for rf in reference_minerals:
-                num_blocks += 2
                 for idx, (year,percentile) in enumerate(year_percentile_combinations):
                     if year == baseline_year:
                         th = "none"
                         loc = "country"
                         opt = "unconstrained"
-                        f.write(f"{rf},{year},{percentile},{th},{loc},{opt}\n")
+                        f.write(f"{rf},{year},{percentile},{th},{loc},{opt},{c},0.0,0.0\n")
                     else:
                         for loc in location_cases:
                             if loc == "country":
@@ -261,7 +323,12 @@ def main(config):
                             else:
                                 th = "max_threshold_metal_tons"
                             for opt in optimisation_type:
-                                f.write(f"{rf},{year},{percentile},{th},{loc},{opt}\n")                     
+                                if opt == "constrained":
+                                    for idx,(op,ef) in enumerate(distance_filters):
+                                        f.write(f"{rf},{year},{percentile},{th},{loc},{opt},{c},{op},{ef}\n")
+                                else:
+                                    f.write(f"{rf},{year},{percentile},{th},{loc},{opt},{c},0.0,0.0\n")
+
         f.close()
 
         """Next we aggregate the flows through the scenarios
@@ -271,7 +338,7 @@ def main(config):
                 "-j", str(num_blocks),
                 "--colsep", ",",
                 "-a",
-                "flow_set.txt",
+                "combined_flow_set.txt",
                 "python",
                 "node_edge_flows.py",
                 "{}"
@@ -280,40 +347,60 @@ def main(config):
         print (args)
         subprocess.run(args)                 
 
-    run_script = True
+    run_script = False
     if run_script is True:
         """Next we call the flow analysis script and loop through the scenarios
         """
-        num_blocks = 12
+        num_blocks = 16
         args = [
                 "parallel",
                 "-j", str(num_blocks),
                 "--colsep", ",",
                 "-a",
-                "optimisation_set.txt",
+                "combined_optimisation_set.txt",
                 "python",
                 "emissions_estimations.py",
                 "{}"
                 ]
-        print ("* Start the processing of flow location optimisation")
+        print ("* Start the processing of carbon emissions estimations")
         print (args)
         subprocess.run(args)
 
     run_script = True
     if run_script is True:
-        for lc in location_cases:
-            for opt in optimisation_type:
-                args = [
-                        "python",
-                        "combined_tonnages.py",
-                        f"{lc}",
-                        f"{opt}"
-                        ]
-                print ("* Start the processing of tonnage summaries into excel")
-                print (args)
-                subprocess.run(args)
+        distance_filters = [(x,y) for x in [0,500,1000] for y in [0,10,20]]  # for a list
+        cx = "combined"
+        for lcx in location_cases:
+            for optx in optimisation_type:
+                if optx == "constrained":
+                    for ix,(opx,efx) in enumerate(distance_filters):
+                        args = [
+                                "python",
+                                "combined_tonnages_v2.py",
+                                f"{lcx}",
+                                f"{optx}",
+                                f"{cx}",
+                                f"{opx}",
+                                f"{efx}"
+                                ]
+                        print ("* Start the processing of tonnage summaries into excel")
+                        print (args)
+                        subprocess.run(args)
+                else:
+                    args = [
+                            "python",
+                            "combined_tonnages_v2.py",
+                            f"{lcx}",
+                            f"{optx}",
+                            f"{cx}",
+                            "0.0",
+                            "0.0"
+                            ]
+                    print ("* Start the processing of tonnage summaries into excel")
+                    print (args)
+                    subprocess.run(args)
     
-    run_script = True
+    run_script = False
     if run_script is True:
         # with open("optimisation_set.txt","r") as r:
         #     for p in r:
@@ -330,14 +417,14 @@ def main(config):
         #                 ]
         #         print ("* Start the processing of aggregating node edge flows")
         #         print (args)
-        #         subprocess.run(args)
+        #         subprocess.run(args)  
         num_blocks = 16
         args = [
                 "parallel",
                 "-j", str(num_blocks),
                 "--colsep", ",",
                 "-a",
-                "optimisation_set.txt",
+                "combined_optimisation_set.txt",
                 "python",
                 "aggregated_node_edge_flows.py",
                 "{}"

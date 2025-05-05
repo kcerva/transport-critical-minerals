@@ -4,7 +4,7 @@
 import os 
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
-from utils import *
+from map_plotting_utils import *
 
 config = load_config()
 incoming_data_path = config['paths']['incoming_data']
