@@ -484,7 +484,6 @@ def plot_mineral_differences_all_minerals(df, constraint_label, mineral_colors, 
     plt.tight_layout()
     return fig
 
-
 def plot_stacked_bar(df, group_by, stack_col, value_col, orientation="vertical", 
                      ax=None, colors=None, short_val_label=None, units=None, 
                      annotate_totals=False, percentage=False, grouped_categ="", 
