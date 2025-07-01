@@ -12,7 +12,6 @@ from plot_emissions_water_all_countries import (
     compute_emissions_by_country,
     compute_water_by_country
 )
-from plot_single_country import generate_single_country_plots
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
 
@@ -46,6 +45,60 @@ def run_plot_water(df, output_dir, config):
     water_path = os.path.join(output_dir, 'water_by_country.csv')
     df_water.to_csv(water_path, index=False)
     print(f"Saved: {water_path}")
+
+def generate_single_country_plots(df, country, output_dir):
+    from plot_utils import get_processing_type_colors, save_plot, apply_plot_layout
+    import plotly.graph_objects as go
+
+    colors = get_processing_type_colors()
+    from plot_gdp_share_by_country_all_constraints import calculate_value_added
+    country_df = df[(df['iso3'] == country) & (df['processing_stage'] > 0)]
+
+    if ('value_added' not in df.columns or 'revenue_usd' not in df.columns or 'gdp_usd' not in df.columns) and all(col in df.columns for col in ["price_usd_per_tonne", "production_cost_usd_per_tonne", "production_tonnes", "gdp_usd"]):
+        country_df = country_df.groupby(['iso3', 'reference_mineral', 'scenario']).apply(calculate_value_added).reset_index(drop=True)
+        country_df['revenue_share_gdp'] = country_df['revenue_usd'] / country_df['gdp_usd'] * 100
+        country_df['value_added_share_gdp'] = country_df['value_added'] / country_df['gdp_usd'] * 100
+
+    if country_df.empty:
+        print(f"No data for {country}, skipping...")
+        return
+
+    metrics = [
+        ('production_tonnes', 'Production (t)'),
+        ('energy_tonsCO2eq', 'CO₂ Emissions (t)'),
+        ('water_usage_m3', 'Water Usage (m³)'),
+        ('revenue_usd', 'Revenue (USD)'),
+        ('value_added', 'Value Added (USD)'),
+        ('revenue_share_gdp', 'Revenue Share of GDP (%)'),
+        ('value_added_share_gdp', 'Value Added Share of GDP (%)')
+    ]
+
+    for metric_col, y_title in metrics:
+        fig = go.Figure()
+        subset = country_df[country_df[metric_col] > 0]
+
+        for proc_type in subset['processing_type'].unique():
+            filtered = subset[subset['processing_type'] == proc_type]
+            grouped = filtered.groupby('year')[metric_col].sum().reset_index()
+
+            fig.add_trace(go.Bar(
+                x=grouped['year'],
+                y=grouped[metric_col],
+                name=proc_type,
+                marker_color=colors.get(proc_type, '#999')
+            ))
+
+        fig.update_layout(
+            barmode='group',
+            title=f"{country}: {y_title}",
+            xaxis_title='Year',
+            yaxis_title=y_title
+        )
+
+        file_name = f"{metric_col}_{country}.png"
+        save_path = os.path.join(output_dir, 'country_figures', country, 'single')
+        os.makedirs(save_path, exist_ok=True)
+        save_plot(fig, os.path.join(save_path, file_name))
 
 def run_single_country_all(df, output_dir, config):
     countries = [c for c in df['iso3'].unique() if c != 'region']

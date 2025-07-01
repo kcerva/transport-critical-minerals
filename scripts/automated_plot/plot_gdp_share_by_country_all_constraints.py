@@ -17,9 +17,6 @@ def adjust_gdp_for_inflation(df):
     return df
 
 def calculate_value_added(group):
-    """
-    Calculate value added at each processing stage based on earlier stages.
-    """
     group = group.sort_values(by="processing_stage", ascending=True)
     group["processing_stage"] = group["processing_stage"].astype(float)
     group["value_added"] = 0.0
@@ -115,3 +112,35 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
         saved_paths.append(filepath)
 
     return saved_paths
+
+# === Reusable computation functions ===
+def compute_value_addition_share(df):
+    df = adjust_gdp_for_inflation(df.copy())
+    df = df[df["processing_stage"] > 0]
+    df = df.sort_values(by=["iso3", "reference_mineral", "scenario", "processing_stage"])
+    df["value_added"] = 0.0
+
+    def calc_value_added(group):
+        for i in range(1, len(group)):
+            prev = group.iloc[i - 1]
+            curr = group.iloc[i]
+            if prev["production_tonnes"] > 0:
+                group.at[curr.name, "value_added"] = (
+                    (curr["price_usd_per_tonne"] * curr["production_tonnes"]) -
+                    (prev["production_cost_usd_per_tonne"] * prev["production_tonnes"])
+                )
+        return group
+
+    df = df.groupby(["iso3", "reference_mineral", "scenario"]).apply(calc_value_added).reset_index(drop=True)
+    df["value"] = df["value_added"] / df["gdp_usd"] * 100
+    df["variable"] = "value_addition"
+    df.rename(columns={"iso3": "country"}, inplace=True)
+    return df[["country", "year", "reference_mineral", "variable", "value"]]
+
+def compute_revenue_share(df):
+    df = adjust_gdp_for_inflation(df.copy())
+    df = df[df["processing_stage"] > 0]
+    df["value"] = df["revenue_usd"] / df["gdp_usd"] * 100
+    df["variable"] = "revenue"
+    df.rename(columns={"iso3": "country"}, inplace=True)
+    return df[["country", "year", "reference_mineral", "variable", "value"]]
