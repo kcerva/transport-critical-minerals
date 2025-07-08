@@ -33,6 +33,45 @@ def generate_country_colormap(iso3_list):
     full_palette = (color_palette * repeats)[:len(sorted_countries)]
     return dict(zip(sorted_countries, full_palette))
 
+def annotate_bar_labels(ax, pivot, orientation="horizontal", min_display_frac=0.05):
+    if orientation == 'horizontal':
+        limit = ax.get_xlim()[1]
+        for i, index in enumerate(pivot.index):
+            cumulative = 0
+            for col in pivot.columns:
+                value = pivot.loc[index, col]
+                if value > min_display_frac * limit:
+                    ax.text(
+                        cumulative + value / 2,
+                        i,
+                        str(col),
+                        ha='center',
+                        va='center',
+                        fontsize=10,
+                        color='white',
+                        fontweight='bold'
+                    )
+                cumulative += value
+    else:
+        limit = ax.get_ylim()[1]
+        for i, index in enumerate(pivot.columns):
+            cumulative = 0
+            for row in pivot.index:
+                value = pivot.loc[row, index]
+                if value > min_display_frac * limit:
+                    ax.text(
+                        i,
+                        cumulative + value / 2,
+                        str(row),
+                        ha='center',
+                        va='center',
+                        fontsize=10,
+                        color='white',
+                        fontweight='bold'
+                    )
+                cumulative += value
+
+
 def annotate_stacked_bars(ax, pivot, min_display_frac=0.05, orientation='horizontal'):
     if orientation == 'horizontal':
         limit = ax.get_xlim()[1]
@@ -81,7 +120,7 @@ def format_legend(ax, fontsize=12, title_fontsize=13, loc="upper left", outside=
         bbox_to_anchor=bbox,
         ncol=ncol
     )
-    
+
 def apply_plot_layout(fig, title="", barmode="group"):
     fig.update_layout(
         title=title,

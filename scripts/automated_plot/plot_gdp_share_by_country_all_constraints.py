@@ -37,17 +37,9 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
     os.makedirs(output_dir, exist_ok=True)
 
     df["scenario_general"] = df["scenario"].apply(lambda s: re.sub(r'^\d{4}_', '', s))
-    df = adjust_gdp_for_inflation(df)
 
-    if "revenue_gdp_share_usd" not in df.columns and "revenue_usd" in df.columns:
-        df["revenue_gdp_share_usd"] = df["revenue_usd"] / df["gdp_usd"] * 100
-
-    if "value_addition_gdp_share_usd" not in df.columns:
-        if all(col in df.columns for col in ["price_usd_per_tonne", "production_cost_usd_per_tonne", "production_tonnes"]):
-            df = df.groupby(["iso3", "reference_mineral", "scenario"]).apply(calculate_value_added).reset_index(drop=True)
-            df["value_addition_gdp_share_usd"] = df["value_added"] / df["gdp_usd"] * 100
-        else:
-            raise KeyError("Missing one or more columns needed to compute value_added (price_usd_per_tonne, production_cost_usd_per_tonne, production_tonnes).")
+    if "reference_mineral_short" not in df.columns:
+        df["reference_mineral_short"] = df["reference_mineral"].map(reference_mineral_namemap)
 
     df_filtered = df[
         (df["processing_stage"] > 0) &
@@ -58,9 +50,7 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
         )
     ].copy()
 
-    df_filtered["reference_mineral_short"] = df_filtered["reference_mineral"].map(reference_mineral_namemap)
     saved_paths = []
-
     for (constraint, scenario_general), group_g in df_filtered.groupby(["constraint", "scenario_general"]):
         scenario_clean = scenario_general.replace("_threshold_metal_tons", "")
         years = sorted(group_g["year"].unique())
@@ -94,12 +84,12 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
 
             ax.set_title(f"{year_val}", fontsize=18, fontweight="bold")
             ax.set_ylabel("Country", fontsize=14)
-            ax.set_xlabel(ylabel, fontsize=14)
+            ax.set_xlabel(f"{ylabel}", fontsize=14)
             ax.tick_params(labelsize=12)
             ax.grid(axis="x", linestyle="--", alpha=0.6)
             ax.set_axisbelow(True)
 
-            annotate_stacked_bars(ax, pivot, orientation="horizontal")
+            annotate_bar_labels(ax, pivot, orientation="horizontal")
             format_legend(ax, title="Mineral")
 
         fig.suptitle(figure_title, fontsize=20, fontweight="bold")
@@ -113,7 +103,12 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
 
     return saved_paths
 
-# === Reusable computation functions ===
+# === Value Addition and Revenue Computation ===
+def adjust_gdp_for_inflation(df):
+    df["gdp_usd"] = df.apply(lambda row: row["gdp_usd"] * 1.22 if "2030" in row["scenario"] else
+                                       row["gdp_usd"] * 1.56 if "2040" in row["scenario"] else row["gdp_usd"], axis=1)
+    return df
+    
 def compute_value_addition_share(df):
     df = adjust_gdp_for_inflation(df.copy())
     df = df[df["processing_stage"] > 0]

@@ -1,10 +1,9 @@
 
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
 import re
-
-
+from plot_utils import annotate_stacked_bars, format_legend
 from plot_config import (
     reference_minerals,
     reference_minerals_short,
@@ -13,7 +12,6 @@ from plot_config import (
     reference_mineral_namemap,
     allowed_mineral_processing
 )
-
 
 def plot_production_by_country_all_constraints(df, output_dir, goal_by_year):
     os.makedirs(output_dir, exist_ok=True)
@@ -32,42 +30,6 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_year):
         )
     ]
 
-
-    # Define valid processing rules (moved to shared config)
-    allowed_mineral_processing = {
-        "nickel": {
-            "processing_stage": [1, 2, 5],
-            "processing_type": ["Beneficiation", "Early refining", "Precursor related product"],
-            "processing_year": [2022, 2030, 2040]
-        },
-        "copper": {
-            "processing_stage": [1, 3, 5],
-            "processing_type": ["Beneficiation", "Early refining", "Precursor related product"],
-            "processing_year": [2022, 2030, 2040]
-        },
-        "cobalt": {
-            "processing_stage": [1, 4.1, 5],
-            "processing_type": ["Beneficiation", "Early refining", "Precursor related product"],
-            "processing_year": [2022, 2030, 2040]
-        },
-        "graphite": {
-            "processing_stage": [1, 3, 4],
-            "processing_type": ["Beneficiation", "Early refining", "Precursor related product"],
-            "processing_year": [2022, 2030, 2040]
-        },
-        "manganese": {
-            "processing_stage": [1, 3.1, 4.1],
-            "processing_type": ["Beneficiation", "Early refining", "Precursor related product"],
-            "processing_year": [2022, 2030, 2040]
-        },
-        "lithium": {
-            "processing_stage": [1, 3, 4.2],
-            "processing_type": ["Beneficiation", "Early refining", "Precursor related product"],
-            "processing_year": [2022, 2030, 2040]
-        }
-    }
-
-    # Apply filtering
     df_filtered = df_filtered[df_filtered.apply(
         lambda row: row["reference_mineral"] in allowed_mineral_processing and
                     row["processing_stage"] in allowed_mineral_processing[row["reference_mineral"]]["processing_stage"] and
