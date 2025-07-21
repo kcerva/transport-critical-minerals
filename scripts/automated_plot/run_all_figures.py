@@ -3,6 +3,24 @@ import pandas as pd
 import json
 import argparse
 
+# Helper utilities
+
+def save_computed_df(df, compute_fn, output_dir, filename_prefix):
+    result = compute_fn(df)
+    path = os.path.join(output_dir, f"{filename_prefix}_by_country.csv")
+    result.to_csv(path, index=False)
+    print(f"Saved: {path}")
+
+def get_country_output_path(base_path, country, subfolder='single'):
+    path = os.path.join(base_path, 'country_figures', country, subfolder)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def parse_constraint_label(constraint):
+    c_type = "Nationalist" if "country" in constraint else "Regionalist"
+    c_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+    return f"{c_type} {c_status}"
+
 from plot_production_by_country_all_constraints import plot_production_by_country_all_constraints
 from plot_gdp_share_by_country_all_constraints import (
     compute_value_addition_share,
@@ -12,7 +30,6 @@ from plot_emissions_water_all_countries import (
     compute_emissions_by_country,
     compute_water_by_country
 )
-from plot_single_country import generate_single_country_plots
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
 
@@ -24,28 +41,85 @@ def run_plot_production(df, output_dir, config):
     return plot_production_by_country_all_constraints(df, output_dir, goal_by_year)
 
 def run_plot_revenue(df, output_dir, config):
-    df_rev = compute_revenue_share(df)
-    rev_path = os.path.join(output_dir, 'revenue_by_country.csv')
-    df_rev.to_csv(rev_path, index=False)
-    print(f"Saved: {rev_path}")
+    save_computed_df(df, compute_revenue_share, output_dir, "revenue")
 
 def run_plot_value_addition(df, output_dir, config):
-    df_val = compute_value_addition_share(df)
-    val_path = os.path.join(output_dir, 'value_addition_by_country.csv')
-    df_val.to_csv(val_path, index=False)
-    print(f"Saved: {val_path}")
+    save_computed_df(df, compute_value_addition_share, output_dir, "value_addition")
 
 def run_plot_emissions(df, output_dir, config):
-    df_co2 = compute_emissions_by_country(df)
-    co2_path = os.path.join(output_dir, 'emissions_by_country.csv')
-    df_co2.to_csv(co2_path, index=False)
-    print(f"Saved: {co2_path}")
+    save_computed_df(df, compute_emissions_by_country, output_dir, "emissions")
 
 def run_plot_water(df, output_dir, config):
-    df_water = compute_water_by_country(df)
-    water_path = os.path.join(output_dir, 'water_by_country.csv')
-    df_water.to_csv(water_path, index=False)
-    print(f"Saved: {water_path}")
+    save_computed_df(df, compute_water_by_country, output_dir, "water")
+
+def generate_single_country_plots(df, country, output_dir):
+    from plot_utils import get_processing_type_colors, save_plot, apply_plot_layout
+    import plotly.graph_objects as go
+
+    colors = get_processing_type_colors()
+    from plot_gdp_share_by_country_all_constraints import calculate_value_added
+    from plotly.subplots import make_subplots
+    country_df = df[(df['iso3'] == country) & (df['processing_stage'] > 0)]
+
+    if ('value_added' not in df.columns or 'revenue_usd' not in df.columns or 'gdp_usd' not in df.columns) and all(col in df.columns for col in ["price_usd_per_tonne", "production_cost_usd_per_tonne", "production_tonnes", "gdp_usd"]):
+        country_df = country_df.groupby(['iso3', 'reference_mineral', 'scenario']).apply(calculate_value_added).reset_index(drop=True)
+        country_df['revenue_share_gdp'] = country_df['revenue_usd'] / country_df['gdp_usd'] * 100
+        country_df['value_added_share_gdp'] = country_df['value_added'] / country_df['gdp_usd'] * 100
+
+    if country_df.empty:
+        print(f"No data for {country}, skipping...")
+        return
+
+    is_single_country = df['iso3'].nunique() == 1
+    metrics = [
+    ('production_tonnes', 'Production', 'kt' if is_single_country else 'Mt', 1e-3 if is_single_country else 1e-6),
+    ('energy_tonsCO2eq', 'CO₂ Emissions', 'kt CO₂eq' if is_single_country else 'Mt CO₂eq', 1e-3 if is_single_country else 1e-6),
+    ('water_usage_m3', 'Water Use', 'thousand m³' if is_single_country else 'million m³', 1e-3 if is_single_country else 1e-6),
+    ('revenue_usd', 'Revenue', 'million USD' if is_single_country else 'billion USD', 1e-6 if is_single_country else 1e-9),
+    ('value_added', 'Value Added', 'million USD' if is_single_country else 'billion USD', 1e-6 if is_single_country else 1e-9),
+    ('revenue_share_gdp', 'Revenue Share of GDP', '%', 1),
+    ('value_added_share_gdp', 'Value Added Share of GDP', '%', 1)
+]
+
+    
+    for metric_col, display_name, unit, scale in metrics:
+        for (constraint, scenario_general), group_df in country_df.groupby(['constraint', 'scenario']):
+            filtered_df = group_df[group_df[metric_col] > 0]
+            if filtered_df.empty:
+                continue
+
+            years = sorted(filtered_df['year'].unique())
+            fig = make_subplots(rows=len(years), cols=1, shared_xaxes=False, subplot_titles=[str(y) for y in years])
+
+            for i, year in enumerate(years):
+                year_data = filtered_df[filtered_df['year'] == year]
+                grouped = year_data.groupby('processing_type')[metric_col].sum().reset_index()
+                grouped[metric_col] *= scale
+
+                fig.add_trace(go.Bar(
+                    x=grouped['processing_type'],
+                    y=grouped[metric_col],
+                    name=str(year),
+                    marker_color=[colors.get(pt, '#999') for pt in grouped['processing_type']]
+                ), row=i+1, col=1)
+
+            # Simplify scenario label for title
+            constraint_type = "Nationalist" if "country" in constraint else "Regionalist"
+            constraint_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+            scenario_clean = scenario_general.replace("_threshold_metal_tons", "")
+
+            title = f"{display_name} — {constraint_type} {constraint_status} ({scenario_clean})"
+            fig.update_layout(
+                barmode='group',
+                title=title,
+                xaxis_title='Processing Type',
+                yaxis_title=f"{display_name} ({unit})"
+            )
+
+            filename = f"{metric_col}_{country}_{constraint}_{scenario_clean}.png".replace(" ", "_")
+            save_path = os.path.join(output_dir, 'country_figures', country, 'single')
+            os.makedirs(save_path, exist_ok=True)
+            save_plot(fig, os.path.join(save_path, filename))
 
 def run_single_country_all(df, output_dir, config):
     countries = [c for c in df['iso3'].unique() if c != 'region']
@@ -72,6 +146,17 @@ def run_country_differences_all(df, output_dir, config):
 def run_all_country_comparisons(df, output_dir, config):
     generate_all_country_comparison_plots(df, output_dir)
 
+def run_country_docx_reports(df, output_dir, config):
+    from generate_country_docx import generate_all_country_docx_reports
+    
+    # Use results path for DOCX output as configured
+    docx_output_dir = os.path.join(config['paths']['results'], 'country_reports')
+    os.makedirs(docx_output_dir, exist_ok=True)
+    
+    print("Generating DOCX reports for all countries...")
+    generate_all_country_docx_reports(df, docx_output_dir)
+    print(f"DOCX reports completed. Saved to: {docx_output_dir}")
+
 AVAILABLE_PLOTS = {
     "revenue_gdp_share": run_plot_revenue,
     "value_addition_gdp_share": run_plot_value_addition,
@@ -80,7 +165,8 @@ AVAILABLE_PLOTS = {
     "water_all_countries": run_plot_water,
     "single_country_all": run_single_country_all,
     "country_differences": run_country_differences_all,
-    "all_country_comparisons": run_all_country_comparisons
+    "all_country_comparisons": run_all_country_comparisons,
+    "country_docx_reports": run_country_docx_reports
 }
 
 PLOT_GROUPS = {
@@ -89,7 +175,8 @@ PLOT_GROUPS = {
         "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons"
     ],
     "single_countries": ["single_country_all", "country_differences"],
-    "core": ["production_all_countries", "emissions_all_countries"]
+    "core": ["production_all_countries", "emissions_all_countries"],
+    "reports": ["country_docx_reports"]
 }
 
 def run_selected_plots(selected=None, group=None):
