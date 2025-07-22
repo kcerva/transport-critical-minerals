@@ -469,98 +469,152 @@ def create_normalized_revenue_summary(df):
 
 
 def create_summary_mid_demand_unconstrained(df):
-    # Filter relevant constraints and scenarios
+    """
+    Create summary table with 2040 scenario comparisons between country and regional constraints
+    Now handles BAU, Early Refining, and Precursor scenarios
+    """
+    # Define the 2040 scenarios we want to compare
+    scenario_2040_patterns = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+    
+    # Filter for relevant constraints and 2040 scenarios + baseline
     df_filtered = df[
-        df['constraint'].isin(['country_unconstrained', 'region_unconstrained']) &
-        ((df['scenario'].str.contains('mid_min') & (df['constraint'] == 'country_unconstrained')) |
-        (df['scenario'].str.contains('mid_max') & (df['constraint'] == 'region_unconstrained')))
-        ]
+        df['constraint'].isin(['country_unconstrained', 'region_unconstrained', 'country_constrained', 'region_constrained']) &
+        (df['scenario'].str.contains('|'.join(scenario_2040_patterns + ['2022_baseline']), na=False))
+    ].copy()
+    
+    # Extract goal type from scenario
+    def get_goal_type(scenario):
+        if 'bau_2040' in scenario:
+            return 'BAU_2040'
+        elif 'early_refining_2040' in scenario:
+            return 'Early_Refining_2040'
+        elif 'precursor_2040' in scenario:
+            return 'Precursor_2040'
+        elif '2022_baseline' in scenario:
+            return 'Baseline_2022'
+        else:
+            return 'Other'
+    
+    df_filtered['goal_type'] = df_filtered['scenario'].apply(get_goal_type)
+    df_filtered['year'] = df_filtered['scenario'].str.extract(r'(\d{4})').fillna('2040')
+    
+    # Filter for mid-demand scenarios (to maintain consistency with original logic)
+    mid_scenarios = df_filtered[
+        df_filtered['scenario'].str.contains('mid_min|mid_max|2022_baseline', na=False)
+    ].copy()
 
+    # Restrict production to stage 0 (metal content) for production metrics
+    prod_stage0 = mid_scenarios[mid_scenarios['processing_stage'] == 0].copy()
 
-    #  Restrict production to stage 0 (metal content)
-    prod_stage0 = df_filtered[df_filtered['processing_stage'] == 0].copy()
-
-    # Aggregate metrics
-    prod_summary = prod_stage0.groupby(['year', 'constraint'])['production_tonnes'].sum().div(1e6).reset_index()  # Mt
-    cost_rev_summary = df_filtered.groupby(['year', 'constraint']).agg({
-        'all_cost_usd': lambda x: x.sum() / 1e6,       # USD million
-        'revenue_usd': lambda x: x.sum() / 1e6         # USD million
-    }).reset_index()
-
-    # Merge
-    summary = pd.merge(prod_summary, cost_rev_summary, on=['year', 'constraint'])
-
-    # Split by constraint and merge
-    country_df = summary[summary['constraint'] == 'country_unconstrained'].copy()
-    region_df = summary[summary['constraint'] == 'region_unconstrained'].copy()
-    merged = pd.merge(country_df, region_df, on='year', suffixes=('_country', '_region'))
-
-    # Compute % changes
-    merged['production_pct_change'] = ((merged['production_tonnes_region'] / merged['production_tonnes_country']) * 100 - 100).round(2)
-    merged['cost_pct_change'] = ((merged['all_cost_usd_region'] / merged['all_cost_usd_country']) * 100 - 100).round(2)
-    merged['revenue_pct_change'] = ((merged['revenue_usd_region'] / merged['revenue_usd_country']) * 100 - 100).round(2)
-
-    # --- Value addition using same-year comparison ---
-    main_va = create_value_added_totals_legacy(df)
-    main_va = main_va[main_va['scenario'].str.contains('mid_')].copy()
-    main_va['year'] = main_va['scenario'].str.extract(r'(\d{4})').astype(int)
-
-    va_summary = []
-    for year in main_va['year'].unique():
-        same_year = main_va[main_va['year'] == year]
-        row = {'year': year}
-        try:
-            country = same_year[same_year['scenario'].str.contains('mid_min')]['country_unconstrained'].values[0]
-            region = same_year[same_year['scenario'].str.contains('mid_max')]['region_unconstrained'].values[0]
-            row['country_unconstrained'] = country
-            row['region_unconstrained'] = region
-            row['pct_change_unconstrained'] = round((region / country) * 100 - 100, 2) if country else None
-        except IndexError:
+    # Create comprehensive summary by goal_type and constraint
+    summary_data = []
+    
+    for goal in mid_scenarios['goal_type'].unique():
+        goal_data = mid_scenarios[mid_scenarios['goal_type'] == goal]
+        
+        if goal_data.empty:
             continue
-        va_summary.append(row)
-
-    va_summary = pd.DataFrame(va_summary)
-
-    # Final table
-    records = []
-    for _, row in merged.iterrows():
-        year = row['year']
-        records.extend([
-            {
-                'Year': year,
-                'Variable': 'Production (Mt of metal content)',
-                'Country': round(row['production_tonnes_country'], 2),
-                'Region': round(row['production_tonnes_region'], 2),
-                'Percentage Change': row['production_pct_change']
-            },
-            {
-                'Year': year,
-                'Variable': 'Total Cost (MUSD)',
-                'Country': round(row['all_cost_usd_country'], 2),
-                'Region': round(row['all_cost_usd_region'], 2),
-                'Percentage Change': row['cost_pct_change']
-            },
-            {
-                'Year': year,
-                'Variable': 'Export Revenue (MUSD)',
-                'Country': round(row['revenue_usd_country'], 2),
-                'Region': round(row['revenue_usd_region'], 2),
-                'Percentage Change': row['revenue_pct_change']
-            }
-        ])
-
-        va_row = va_summary[va_summary['year'] == year]
-        if not va_row.empty:
-            va = va_row.iloc[0]
-            records.append({
-                'Year': year,
-                'Variable': 'Value Addition (MUSD)',
-                'Country': round(va['country_unconstrained'], 2),
-                'Region': round(va['region_unconstrained'], 2),
-                'Percentage Change': round(va['pct_change_unconstrained'], 2)
+            
+        # Get year for this goal
+        year = goal_data['year'].iloc[0]
+        
+        for constraint in ['country_unconstrained', 'region_unconstrained', 'country_constrained', 'region_constrained']:
+            constraint_data = goal_data[goal_data['constraint'] == constraint]
+            
+            if constraint_data.empty:
+                continue
+            
+            # Production (stage 0 only)
+            prod_data = constraint_data[constraint_data['processing_stage'] == 0]
+            production_mt = prod_data['production_tonnes'].sum() / 1e6 if not prod_data.empty else 0
+            
+            # Costs and revenue (all stages)
+            total_cost_musd = constraint_data['all_cost_usd'].sum() / 1e6
+            total_revenue_musd = constraint_data['revenue_usd'].sum() / 1e6
+            
+            # Water and emissions
+            water_mcm = constraint_data['water_usage_m3'].sum() / 1e6
+            transport_co2_kt = constraint_data['transport_total_tonsCO2eq'].sum() / 1e3
+            energy_co2_kt = constraint_data['energy_tonsCO2eq'].sum() / 1e3
+            
+            summary_data.append({
+                'goal_type': goal,
+                'year': year,
+                'constraint': constraint,
+                'production_Mt': round(production_mt, 3),
+                'total_cost_MUSD': round(total_cost_musd, 2),
+                'total_revenue_MUSD': round(total_revenue_musd, 2),
+                'water_use_MCM': round(water_mcm, 2),
+                'transport_co2_kt': round(transport_co2_kt, 1),
+                'energy_co2_kt': round(energy_co2_kt, 1),
+                'total_co2_kt': round(transport_co2_kt + energy_co2_kt, 1)
             })
-
-    return pd.DataFrame(records)
+    
+    summary_df = pd.DataFrame(summary_data)
+    
+    if summary_df.empty:
+        return summary_df
+    
+    # Create comparison table with country vs regional analysis
+    comparison_data = []
+    
+    for goal in summary_df['goal_type'].unique():
+        goal_summary = summary_df[summary_df['goal_type'] == goal]
+        year = goal_summary['year'].iloc[0]
+        
+        # Get data for each constraint type
+        country_unc = goal_summary[goal_summary['constraint'] == 'country_unconstrained']
+        region_unc = goal_summary[goal_summary['constraint'] == 'region_unconstrained']
+        country_con = goal_summary[goal_summary['constraint'] == 'country_constrained']
+        region_con = goal_summary[goal_summary['constraint'] == 'region_constrained']
+        
+        # Create comparison rows for unconstrained scenarios
+        if not country_unc.empty and not region_unc.empty:
+            country_val = country_unc.iloc[0]
+            region_val = region_unc.iloc[0]
+            
+            comparison_data.append({
+                'goal_type': goal,
+                'year': year,
+                'constraint_comparison': 'Country_vs_Regional_Unconstrained',
+                'production_Mt_country': country_val['production_Mt'],
+                'production_Mt_region': region_val['production_Mt'],
+                'production_pct_change': round(((region_val['production_Mt'] / country_val['production_Mt']) * 100 - 100) if country_val['production_Mt'] > 0 else 0, 2),
+                'cost_MUSD_country': country_val['total_cost_MUSD'],
+                'cost_MUSD_region': region_val['total_cost_MUSD'],
+                'cost_pct_change': round(((region_val['total_cost_MUSD'] / country_val['total_cost_MUSD']) * 100 - 100) if country_val['total_cost_MUSD'] > 0 else 0, 2),
+                'revenue_MUSD_country': country_val['total_revenue_MUSD'],
+                'revenue_MUSD_region': region_val['total_revenue_MUSD'],
+                'revenue_pct_change': round(((region_val['total_revenue_MUSD'] / country_val['total_revenue_MUSD']) * 100 - 100) if country_val['total_revenue_MUSD'] > 0 else 0, 2)
+            })
+        
+        # Create comparison rows for constrained scenarios
+        if not country_con.empty and not region_con.empty:
+            country_val = country_con.iloc[0]
+            region_val = region_con.iloc[0]
+            
+            comparison_data.append({
+                'goal_type': goal,
+                'year': year,
+                'constraint_comparison': 'Country_vs_Regional_Constrained',
+                'production_Mt_country': country_val['production_Mt'],
+                'production_Mt_region': region_val['production_Mt'],
+                'production_pct_change': round(((region_val['production_Mt'] / country_val['production_Mt']) * 100 - 100) if country_val['production_Mt'] > 0 else 0, 2),
+                'cost_MUSD_country': country_val['total_cost_MUSD'],
+                'cost_MUSD_region': region_val['total_cost_MUSD'],
+                'cost_pct_change': round(((region_val['total_cost_MUSD'] / country_val['total_cost_MUSD']) * 100 - 100) if country_val['total_cost_MUSD'] > 0 else 0, 2),
+                'revenue_MUSD_country': country_val['total_revenue_MUSD'],
+                'revenue_MUSD_region': region_val['total_revenue_MUSD'],
+                'revenue_pct_change': round(((region_val['total_revenue_MUSD'] / country_val['total_revenue_MUSD']) * 100 - 100) if country_val['total_revenue_MUSD'] > 0 else 0, 2)
+            })
+    
+    comparison_df = pd.DataFrame(comparison_data)
+    
+    # Combine both detailed summary and comparison data
+    if not comparison_df.empty:
+        return comparison_df
+    else:
+        return summary_df
 
 
 def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, country_output_folder: str):
@@ -575,7 +629,7 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
         create_revenue_by_mineral(df).to_excel(writer, sheet_name="revenue_million_usd", index=False)
         create_transport_emissions_by_mineral(df).to_excel(writer, sheet_name="transport_emissions_MtCO2e", index=False)
         create_energy_emissions_by_mineral(df).to_excel(writer, sheet_name="energy_emissions_MtCO2e", index=False)
-        create_transport_volume_by_mineral(df).to_excel(writer, sheet_name="transport_volume_million_ton_km", index=False)
+        create_transport_volume_by_mineral(df).to_excel(writer, sheet_name="transport_volume_mtkm", index=False)
         create_energy_capacity_by_mineral(df).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
         create_water_use_by_mineral(df).to_excel(writer, sheet_name="water_use_million_m3", index=False)
         create_production_table(df, to_kt=False).to_excel(writer, sheet_name="production_Mt", index=False)
@@ -589,11 +643,11 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
         norm_rev = create_normalized_revenue_table_by_stage_and_type(df)
         # norm_val_add = create_normalized_value_added_table_by_stage_and_type(df)
 
-        norm_rev.to_excel(writer, sheet_name="normalized_revenue_by_type_usdpt", index=False)
+        norm_rev.to_excel(writer, sheet_name="norm_revenue_by_type_usdpt", index=False)
         
         # Normalized revenue summary
         norm_summary = create_normalized_revenue_summary(df)
-        norm_summary.to_excel(writer, sheet_name="normalized_revenue_summary_usdpt", index=False)
+        norm_summary.to_excel(writer, sheet_name="norm_revenue_summary_usdpt", index=False)
 
         
         # norm_val_add.to_excel(writer, sheet_name="normalized_valadded_by_type_usdpt", index=False)
@@ -630,10 +684,10 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
                 norm_rev = create_normalized_revenue_table_by_stage_and_type(df_country)
                 # norm_val_add = create_normalized_value_added_table_by_stage_and_type(df_country)
 
-                norm_rev.to_excel(writer, sheet_name="normalized_revenue_by_type_usdpt", index=False)
+                norm_rev.to_excel(writer, sheet_name="norm_revenue_by_type_usdpt", index=False)
 
                 norm_summary = create_normalized_revenue_summary(df_country)
-                norm_summary.to_excel(writer, sheet_name="normalized_revenue_summary_usdpt", index=False)
+                norm_summary.to_excel(writer, sheet_name="norm_revenue_summary_usdpt", index=False)
 
                 # norm_val_add.to_excel(writer, sheet_name="normalized_valadded_by_type_usdpt", index=False)
 

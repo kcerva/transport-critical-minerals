@@ -11,12 +11,12 @@ def create_country_document(country_name, iso3):
     doc = Document()
     
     # Set document title
-    title = doc.add_heading(f'Critical Minerals Transport Analysis: {country_name} ({iso3})', 0)
+    title = doc.add_heading(f'Critical Minerals Value Addition in {country_name} ({iso3})', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     # Add executive summary placeholder
     doc.add_heading('Executive Summary', level=1)
-    doc.add_paragraph('This report presents a comprehensive analysis of critical minerals transport scenarios for {}.'.format(country_name))
+    doc.add_paragraph('This report presents an analysis of critical minerals value addition scenarios for {}. These results are linked to the CCG African Regional study'.format(country_name))
     doc.add_page_break()
     
     return doc

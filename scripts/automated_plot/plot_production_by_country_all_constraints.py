@@ -13,30 +13,61 @@ from plot_config import (
     allowed_mineral_processing
 )
 
-def plot_production_by_country_all_constraints(df, output_dir, goal_by_year):
+def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario):
     os.makedirs(output_dir, exist_ok=True)
     df["production_million_tonnes"] = df["production_tonnes"] / 1e6
 
-    def clean_scenario_name(s):
-        return re.sub(r'^\d{4}_', '', s)
+    def get_goal_from_scenario(scenario):
+        """Extract goal type from scenario name"""
+        if 'bau_2040' in scenario:
+            return "Business as Usual"
+        elif 'early_refining_2040' in scenario:
+            return "Early Refining"
+        elif 'precursor_2040' in scenario:
+            return "Precursor related product"
+        elif '2022_baseline' in scenario:
+            return "Baseline"
+        else:
+            return "Unknown"
+    
+    def get_processing_type_for_goal(goal):
+        """Map goal to expected processing_type"""
+        goal_processing_map = {
+            'Business as Usual': 'Beneficiation',
+            'Early Refining': 'Early refining', 
+            'Precursor related product': 'Precursor related product',
+            'Baseline': None  # For baseline, show all processing types
+        }
+        return goal_processing_map.get(goal)
 
-    df["scenario_general"] = df["scenario"].apply(clean_scenario_name)
+    df["goal_type"] = df["scenario"].apply(get_goal_from_scenario)
+    df["scenario_general"] = df["scenario"].apply(lambda s: re.sub(r'^\d{4}_', '', s))
 
+    # Filter for relevant scenarios (mid demand scenarios)
     df_filtered = df[
         (df["processing_stage"] > 0) &
         (
             ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
-            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max"))) |
+            (df["scenario"] == "2022_baseline")  # Include baseline
         )
     ]
 
-    df_filtered = df_filtered[df_filtered.apply(
-        lambda row: row["reference_mineral"] in allowed_mineral_processing and
-                    row["processing_stage"] in allowed_mineral_processing[row["reference_mineral"]]["processing_stage"] and
-                    row["processing_type"] in allowed_mineral_processing[row["reference_mineral"]]["processing_type"] and
-                    row["year"] in allowed_mineral_processing[row["reference_mineral"]]["processing_year"],
-        axis=1
-    )]
+    # Apply goal-based processing type filtering (this is the key change)
+    def should_include_row(row):
+        goal = row["goal_type"]
+        expected_processing_type = get_processing_type_for_goal(goal)
+        
+        # For baseline, include all processing types
+        if goal == "Baseline":
+            return True
+        # For other goals, filter to specific processing type
+        elif expected_processing_type:
+            return row["processing_type"] == expected_processing_type
+        else:
+            return True
+    
+    df_filtered = df_filtered[df_filtered.apply(should_include_row, axis=1)]
 
     saved_paths = []
     for (constraint, scenario_general), group_g in df_filtered.groupby(["constraint", "scenario_general"]):
@@ -51,11 +82,9 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_year):
         figure_title = f"{constraint_type} {constraint_status} ({scenario_clean})"
 
         for ax, year_val in zip(axes, years):
-            processing_goal = goal_by_year.get(year_val, "")
-            group_y = group_g[
-                (group_g["year"] == year_val) &
-                (group_g["processing_type"] == processing_goal)
-            ]
+            # Since we already filtered by goal-specific processing types, 
+            # we just need to filter by year
+            group_y = group_g[group_g["year"] == year_val]
             grouped = group_y.groupby(["iso3", "reference_mineral"])["production_million_tonnes"].sum().reset_index()
 
             pivot = grouped.pivot_table(
@@ -74,7 +103,9 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_year):
             colors = [reference_mineral_colormap.get(col, "#999999") for col in pivot.columns]
             bars = pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
 
-            ax.set_title(f"{year_val} - {processing_goal}", fontsize=18, fontweight="bold")
+            # Get goal type for this scenario group
+            goal_type = group_g["goal_type"].iloc[0] if not group_g.empty else "Unknown"
+            ax.set_title(f"{year_val} - {goal_type}", fontsize=18, fontweight="bold")
             ax.set_ylabel("Country", fontsize=14)
             ax.set_xlabel("Production (million tonnes)", fontsize=14)
             ax.tick_params(labelsize=12)

@@ -32,13 +32,17 @@ from plot_emissions_water_all_countries import (
 )
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
+from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
 
 def run_plot_production(df, output_dir, config):
-    goal_by_year = {
-        2030: "Early refining",
-        2040: "Precursor related product"
+    # Updated for new scenario structure - goals are determined by scenario name, not year
+    goal_by_scenario = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Refining', 
+        'precursor_2040': 'Precursor related product',
+        '2022_baseline': 'Baseline'
     }
-    return plot_production_by_country_all_constraints(df, output_dir, goal_by_year)
+    return plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
 
 def run_plot_revenue(df, output_dir, config):
     save_computed_df(df, compute_revenue_share, output_dir, "revenue")
@@ -146,6 +150,55 @@ def run_country_differences_all(df, output_dir, config):
 def run_all_country_comparisons(df, output_dir, config):
     generate_all_country_comparison_plots(df, output_dir)
 
+def run_goal_comparisons_all_countries(df, output_dir, config):
+    """Generate goal comparison charts for all countries"""
+    countries = [c for c in df['iso3'].unique() if c != 'region' and pd.notna(c)]
+    
+    goal_comparison_dir = os.path.join(output_dir, 'goal_comparisons')
+    os.makedirs(goal_comparison_dir, exist_ok=True)
+    
+    print(f"Generating goal comparison charts for {len(countries)} countries...")
+    
+    for country in countries:
+        try:
+            df_country = df[df['iso3'] == country].copy()
+            if df_country.empty:
+                continue
+                
+            country_output_dir = os.path.join(goal_comparison_dir, country)
+            
+            # Production goal comparison
+            plot_goal_comparisons_2040(
+                df_country,
+                country_output_dir,
+                metric_column="production_tonnes",
+                metric_title="Production",
+                metric_units="kt",
+                country_iso3=country
+            )
+            
+            # Revenue goal comparison
+            plot_goal_comparisons_2040(
+                df_country,
+                country_output_dir,
+                metric_column="revenue_usd",
+                metric_title="Revenue",
+                metric_units="Million USD",
+                country_iso3=country
+            )
+            
+            # Production by processing type goal comparison
+            plot_production_goal_comparison_by_processing_type(
+                df_country,
+                country_output_dir,
+                country_iso3=country
+            )
+            
+        except Exception as e:
+            print(f"Error generating goal comparisons for {country}: {e}")
+    
+    print(f"Goal comparison charts completed. Saved to: {goal_comparison_dir}")
+
 def run_country_docx_reports(df, output_dir, config):
     from generate_country_docx import generate_all_country_docx_reports
     
@@ -166,17 +219,20 @@ AVAILABLE_PLOTS = {
     "single_country_all": run_single_country_all,
     "country_differences": run_country_differences_all,
     "all_country_comparisons": run_all_country_comparisons,
+    "goal_comparisons_all_countries": run_goal_comparisons_all_countries,
     "country_docx_reports": run_country_docx_reports
 }
 
 PLOT_GROUPS = {
     "all_countries": [
         "production_all_countries", "emissions_all_countries", "water_all_countries",
-        "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons"
+        "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons",
+        "goal_comparisons_all_countries"
     ],
     "single_countries": ["single_country_all", "country_differences"],
-    "core": ["production_all_countries", "emissions_all_countries"],
-    "reports": ["country_docx_reports"]
+    "core": ["production_all_countries", "emissions_all_countries", "goal_comparisons_all_countries"],
+    "reports": ["country_docx_reports"],
+    "goal_analysis": ["goal_comparisons_all_countries"]
 }
 
 def run_selected_plots(selected=None, group=None):
@@ -203,7 +259,8 @@ def run_selected_plots(selected=None, group=None):
     figure_path = os.path.join(config["paths"]["figures"], "automated_plots")
     os.makedirs(figure_path, exist_ok=True)
 
-    df = pd.read_excel(data_file)
+    df = pd.read_excel(data_file, index_col=[0,1,2,3,4])
+    df = df.reset_index()  # Convert multi-level index to columns
 
     for name in sorted(selected_plots):
         print(f"Running: {name}")

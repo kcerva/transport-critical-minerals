@@ -27,7 +27,8 @@ from chart_adapters import (
     adapt_gdp_share_charts, 
     adapt_emissions_charts,
     adapt_water_charts,
-    create_policy_difference_chart
+    create_policy_difference_chart,
+    adapt_goal_comparison_charts
 )
 
 # Import DOCX utilities
@@ -101,6 +102,11 @@ def generate_country_charts(df_country, iso3, temp_dir):
         diff_paths = create_policy_difference_chart(df_country, iso3, temp_dir)
         if diff_paths:
             chart_paths['differences'] = diff_paths
+        
+        # Goal comparison charts (BAU vs Early Refining vs Precursor for 2040)
+        goal_comparison_paths = adapt_goal_comparison_charts(df_country, iso3, temp_dir)
+        if goal_comparison_paths:
+            chart_paths['goal_comparisons'] = goal_comparison_paths
             
     except Exception as e:
         print(f"Error generating charts for {iso3}: {e}")
@@ -114,14 +120,15 @@ def add_metal_content_section(doc, df_country):
     try:
         metal_table = create_metal_content_table(df_country, to_kt=True)
         if not metal_table.empty:
+            # Add interpretation
+            doc.add_paragraph(
+                "The following table shows the metal content (or mineral in the case of graphite) production (processing stage 0) across different "
+                "policy constraints and scenarios. Values are shown in kilotonnes (kt) for the country."
+            )
             add_table_from_dataframe(doc, metal_table, 
                                    title="Metal Content Production by Constraint (kilotonnes)")
             
-            # Add interpretation
-            doc.add_paragraph(
-                "This table shows the metal content production (processing stage 0) across different "
-                "policy constraints and scenarios. Values are shown in kilotonnes (kt) for the country."
-            )
+            
         else:
             doc.add_paragraph("No metal content production data available.")
             
@@ -150,11 +157,11 @@ def add_production_analysis_section(doc, df_country, chart_paths):
             for chart_path in chart_paths['production']:
                 if os.path.exists(chart_path):
                     add_image_from_path(doc, chart_path, 
-                                      title=f"Production Chart: {os.path.basename(chart_path)}")
+                                      title=f"Production: {os.path.basename(chart_path)}")
         
         doc.add_paragraph(
-            "Production analysis shows output across different processing stages and types. "
-            "Processing stage 0 represents raw mineral extraction, while higher stages represent "
+            "The production analysis shows output across different processing stages and types. "
+            "Processing stage 0 represents units of metal content at the extraction stage (or mineral in the case of graphite), while higher stages represent "
             "value-added processing activities."
         )
         
@@ -180,7 +187,7 @@ def add_economic_analysis_section(doc, df_country, chart_paths):
         if 'revenue' in chart_paths and chart_paths['revenue']:
             for chart_path in chart_paths['revenue']:
                 if os.path.exists(chart_path):
-                    add_image_from_path(doc, chart_path, title=f"Revenue Chart")
+                    add_image_from_path(doc, chart_path, title=f"Revenue")
         
         # Value addition analysis
         add_section_header(doc, 'Value Addition Analysis', level=2)
@@ -196,10 +203,10 @@ def add_economic_analysis_section(doc, df_country, chart_paths):
         if 'value_addition' in chart_paths and chart_paths['value_addition']:
             for chart_path in chart_paths['value_addition']:
                 if os.path.exists(chart_path):
-                    add_image_from_path(doc, chart_path, title=f"Value Addition Chart")
+                    add_image_from_path(doc, chart_path, title=f"Value Addition")
         
         doc.add_paragraph(
-            "Economic analysis examines revenue generation and value addition across different "
+            "The economic analysis examines revenue generation and value addition across different "
             "processing activities and policy scenarios. Value addition represents the economic "
             "benefit gained from higher-stage processing activities."
         )
@@ -222,10 +229,10 @@ def add_environmental_impact_section(doc, df_country, chart_paths):
         if 'water' in chart_paths and chart_paths['water']:
             for chart_path in chart_paths['water']:
                 if os.path.exists(chart_path):
-                    add_image_from_path(doc, chart_path, title="Water Usage Chart")
+                    add_image_from_path(doc, chart_path, title="Water Usage")
         
         # CO2 emissions analysis  
-        add_section_header(doc, 'CO2 Emissions', level=2)
+        add_section_header(doc, 'CO2e Emissions', level=2)
         
         # Transport emissions
         transport_emissions = create_transport_emissions_by_mineral(df_country, to_kt=True)
@@ -243,10 +250,10 @@ def add_environmental_impact_section(doc, df_country, chart_paths):
         if 'emissions' in chart_paths and chart_paths['emissions']:
             for chart_path in chart_paths['emissions']:
                 if os.path.exists(chart_path):
-                    add_image_from_path(doc, chart_path, title="CO2 Emissions Chart")
+                    add_image_from_path(doc, chart_path, title="CO2 Emissions")
         
         doc.add_paragraph(
-            "Environmental impact analysis covers water usage and CO2 emissions from both "
+            "The environmental impact analysis covers water usage and CO2 emissions from both "
             "transport and energy consumption across different policy scenarios."
         )
         
@@ -255,7 +262,7 @@ def add_environmental_impact_section(doc, df_country, chart_paths):
 
 def add_policy_comparison_section(doc, df_country, chart_paths):
     """Add policy comparison section"""
-    add_section_header(doc, 'Policy Scenario Comparison', level=1)
+    add_section_header(doc, 'Scenario Comparison', level=1)
     
     try:
         doc.add_paragraph(
@@ -268,16 +275,43 @@ def add_policy_comparison_section(doc, df_country, chart_paths):
             for chart_path in chart_paths['differences']:
                 if os.path.exists(chart_path):
                     chart_name = os.path.basename(chart_path).replace('_', ' ').replace('.png', '')
-                    add_image_from_path(doc, chart_path, title=f"Policy Comparison: {chart_name}")
+                    add_image_from_path(doc, chart_path, title=f"Scenario Comparisons: {chart_name}")
         
         doc.add_paragraph(
-            "Policy comparisons show the quantitative differences in production, economic, and "
+            "The scenario comparisons show the quantitative differences in production, economic, and "
             "environmental outcomes under different policy scenarios. Positive values indicate "
             "benefits of regionalist or unconstrained approaches."
         )
         
     except Exception as e:
         doc.add_paragraph(f"Error generating policy comparison: {e}")
+
+def add_goal_comparison_section(doc, df_country, chart_paths):
+    """Add 2040 goal comparison section"""
+    add_section_header(doc, '2040 Goal Comparison Analysis', level=1)
+    
+    try:
+        doc.add_paragraph(
+            "This section compares the three 2040 development goals: Business as Usual (BAU), "
+            "Early Refining, and Precursor related product scenarios. These comparisons show "
+            "how different strategic objectives lead to varying outcomes in production, revenue, "
+            "water consumption, and CO2 emissions."
+        )
+        
+        # Add goal comparison plots if available
+        if 'goal_comparisons' in chart_paths and chart_paths['goal_comparisons']:
+            for chart_path in chart_paths['goal_comparisons']:
+                if os.path.exists(chart_path):
+                    chart_name = os.path.basename(chart_path).replace('_', ' ').replace('.png', '')
+                    add_image_from_path(doc, chart_path, title=f"Goal Comparison: {chart_name}")
+        
+        doc.add_paragraph(
+            "The goal comparison analysis reveals the trade-offs and benefits of pursuing different "
+            "strategic development pathways for critical mineral processing."
+        )
+        
+    except Exception as e:
+        doc.add_paragraph(f"Error generating goal comparison analysis: {e}")
 
 def generate_country_docx(df_country, iso3, output_dir):
     """Generate a comprehensive DOCX report for a specific country"""
@@ -315,9 +349,10 @@ def generate_country_docx(df_country, iso3, output_dir):
         doc.add_page_break()
         
         add_policy_comparison_section(doc, df_country, chart_paths)
+        doc.add_page_break()
+        
+        add_goal_comparison_section(doc, df_country, chart_paths)
     
-    # Add footer with generation info
-    doc.add_paragraph(f"\nReport generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Save document
     docx_filename = f"{iso3}_country_report.docx"

@@ -4,6 +4,7 @@ import pandas as pd
 from plot_production_by_country_all_constraints import plot_production_by_country_all_constraints
 from plot_gdp_share_by_country_all_constraints import plot_gdp_share_by_country_all_constraints
 from plot_emissions_water_all_countries import plot_emissions_by_country_all_constraints, plot_water_by_country_all_constraints
+from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
 
 def adapt_production_charts(df_country, iso3, temp_dir):
     """Adapter for production charts - handles single country data"""
@@ -12,8 +13,14 @@ def adapt_production_charts(df_country, iso3, temp_dir):
         country_output_dir = os.path.join(temp_dir, f'production_{iso3}')
         os.makedirs(country_output_dir, exist_ok=True)
         
-        goal_by_year = {2030: "Early refining", 2040: "Precursor related product"}
-        saved_paths = plot_production_by_country_all_constraints(df_country, country_output_dir, goal_by_year)
+        # Updated for new scenario structure - goals are determined by scenario name, not year
+        goal_by_scenario = {
+            'bau_2040': 'Business as Usual',
+            'early_refining_2040': 'Early Refining', 
+            'precursor_2040': 'Precursor related product',
+            '2022_baseline': 'Baseline'
+        }
+        saved_paths = plot_production_by_country_all_constraints(df_country, country_output_dir, goal_by_scenario)
         return saved_paths if saved_paths else []
     except Exception as e:
         print(f"Error generating production charts for {iso3}: {e}")
@@ -27,8 +34,35 @@ def adapt_gdp_share_charts(df_country, iso3, temp_dir, value_column, title_prefi
         country_output_dir = os.path.join(temp_dir, f'{chart_type}_{iso3}')
         os.makedirs(country_output_dir, exist_ok=True)
         
+        # Handle value_added column - it needs to be computed
+        if value_column == 'value_added':
+            # Import the calculation function
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'plot'))
+            from data_tables import calc_value_added
+            
+            # Compute value_added column if it doesn't exist
+            df_working = df_country.copy()
+            if 'value_added' not in df_working.columns:
+                df_working = df_working[df_working["processing_stage"] > 0].copy()
+                
+                # Check for incomplete pricing/cost data and warn user
+                incomplete_data = len(df_working[
+                    (df_working['production_tonnes'] > 0) & 
+                    ((df_working['price_usd_per_tonne'] == 0) | (df_working['production_cost_usd_per_tonne'] == 0))
+                ])
+                if incomplete_data > 0:
+                    print(f"⚠️  Warning: {incomplete_data} rows have production but missing price/cost data. Value addition calculations will be limited to complete data only.")
+                
+                df_working["value_added"] = 0.0
+                df_working = df_working.groupby(
+                    ['scenario', 'constraint', 'iso3', 'reference_mineral']
+                ).apply(calc_value_added).reset_index(drop=True)
+        else:
+            df_working = df_country
+        
         saved_paths = plot_gdp_share_by_country_all_constraints(
-            df_country, country_output_dir, value_column, title_prefix, ylabel
+            df_working, country_output_dir, value_column, title_prefix, ylabel
         )
         return saved_paths if saved_paths else []
     except Exception as e:
@@ -89,6 +123,74 @@ def create_policy_difference_chart(df_country, iso3, temp_dir):
         return saved_paths
     except Exception as e:
         print(f"Error generating policy difference charts for {iso3}: {e}")
+        return []
+
+def adapt_goal_comparison_charts(df_country, iso3, temp_dir):
+    """Adapter for goal comparison charts - comparing 2040 BAU vs Early Refining vs Precursor"""
+    try:
+        # Create country-specific output directory
+        country_output_dir = os.path.join(temp_dir, f'goal_comparison_{iso3}')
+        os.makedirs(country_output_dir, exist_ok=True)
+        
+        saved_paths = []
+        
+        # Production goal comparison
+        production_paths = plot_goal_comparisons_2040(
+            df_country, 
+            country_output_dir, 
+            metric_column="production_tonnes",
+            metric_title="Production",
+            metric_units="kt",
+            country_iso3=iso3
+        )
+        saved_paths.extend(production_paths)
+        
+        # Production by processing type goal comparison
+        processing_paths = plot_production_goal_comparison_by_processing_type(
+            df_country, 
+            country_output_dir, 
+            country_iso3=iso3
+        )
+        saved_paths.extend(processing_paths)
+        
+        # Revenue goal comparison
+        revenue_paths = plot_goal_comparisons_2040(
+            df_country,
+            country_output_dir,
+            metric_column="revenue_usd",
+            metric_title="Revenue",
+            metric_units="Million USD",
+            country_iso3=iso3
+        )
+        saved_paths.extend(revenue_paths)
+        
+        # Water use goal comparison
+        water_paths = plot_goal_comparisons_2040(
+            df_country,
+            country_output_dir,
+            metric_column="water_usage_m3",
+            metric_title="Water Usage",
+            metric_units="Million m³",
+            country_iso3=iso3
+        )
+        saved_paths.extend(water_paths)
+        
+        # CO2 emissions goal comparison (combined transport + energy)
+        df_co2 = df_country.copy()
+        df_co2["total_co2_tonnes"] = (df_co2["transport_total_tonsCO2eq"] + df_co2["energy_tonsCO2eq"]) / 1000
+        co2_paths = plot_goal_comparisons_2040(
+            df_co2,
+            country_output_dir,
+            metric_column="total_co2_tonnes",
+            metric_title="Total CO2 Emissions", 
+            metric_units="kt CO2",
+            country_iso3=iso3
+        )
+        saved_paths.extend(co2_paths)
+        
+        return saved_paths
+    except Exception as e:
+        print(f"Error generating goal comparison charts for {iso3}: {e}")
         return []
 
 def create_production_difference_table(df_country):

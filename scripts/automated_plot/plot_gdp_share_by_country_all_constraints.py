@@ -9,7 +9,7 @@ from plot_config import (
     reference_mineral_colormapshort
 )
 
-from plot_utils import format_legend, annotate_stacked_bars
+from plot_utils import format_legend, annotate_stacked_bars, annotate_bar_labels
 
 def adjust_gdp_for_inflation(df):
     df["gdp_usd"] = df.apply(lambda row: row["gdp_usd"] * 1.22 if "2030" in row["scenario"] else
