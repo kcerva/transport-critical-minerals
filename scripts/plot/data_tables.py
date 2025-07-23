@@ -471,7 +471,7 @@ def create_normalized_revenue_summary(df):
 def create_summary_mid_demand_unconstrained(df):
     """
     Create summary table with 2040 scenario comparisons between country and regional constraints
-    Now handles BAU, Early Refining, and Precursor scenarios
+    Now handles BAU, Early Processing, and Product Manufacturing scenarios
     """
     # Define the 2040 scenarios we want to compare
     scenario_2040_patterns = ['bau_2040', 'early_refining_2040', 'precursor_2040']
@@ -487,9 +487,9 @@ def create_summary_mid_demand_unconstrained(df):
         if 'bau_2040' in scenario:
             return 'BAU_2040'
         elif 'early_refining_2040' in scenario:
-            return 'Early_Refining_2040'
+            return 'Early_Processing_2040'
         elif 'precursor_2040' in scenario:
-            return 'Precursor_2040'
+            return 'Product_Manufacturing_2040'
         elif '2022_baseline' in scenario:
             return 'Baseline_2022'
         else:
@@ -532,10 +532,12 @@ def create_summary_mid_demand_unconstrained(df):
             total_cost_musd = constraint_data['all_cost_usd'].sum() / 1e6
             total_revenue_musd = constraint_data['revenue_usd'].sum() / 1e6
             
-            # Water and emissions
+            # Water, energy, transport and emissions
             water_mcm = constraint_data['water_usage_m3'].sum() / 1e6
             transport_co2_kt = constraint_data['transport_total_tonsCO2eq'].sum() / 1e3
             energy_co2_kt = constraint_data['energy_tonsCO2eq'].sum() / 1e3
+            transport_volume_mtkm = constraint_data['transport_total_tonkm'].sum() / 1e6  # Convert to million tonne-km
+            energy_capacity_gw = constraint_data['energy_req_capacity_kW'].sum() / 1e6  # Convert kW to GW
             
             summary_data.append({
                 'goal_type': goal,
@@ -545,6 +547,8 @@ def create_summary_mid_demand_unconstrained(df):
                 'total_cost_MUSD': round(total_cost_musd, 2),
                 'total_revenue_MUSD': round(total_revenue_musd, 2),
                 'water_use_MCM': round(water_mcm, 2),
+                'transport_volume_Mtkm': round(transport_volume_mtkm, 2),
+                'energy_capacity_GW': round(energy_capacity_gw, 2),
                 'transport_co2_kt': round(transport_co2_kt, 1),
                 'energy_co2_kt': round(energy_co2_kt, 1),
                 'total_co2_kt': round(transport_co2_kt + energy_co2_kt, 1)
@@ -585,7 +589,19 @@ def create_summary_mid_demand_unconstrained(df):
                 'cost_pct_change': round(((region_val['total_cost_MUSD'] / country_val['total_cost_MUSD']) * 100 - 100) if country_val['total_cost_MUSD'] > 0 else 0, 2),
                 'revenue_MUSD_country': country_val['total_revenue_MUSD'],
                 'revenue_MUSD_region': region_val['total_revenue_MUSD'],
-                'revenue_pct_change': round(((region_val['total_revenue_MUSD'] / country_val['total_revenue_MUSD']) * 100 - 100) if country_val['total_revenue_MUSD'] > 0 else 0, 2)
+                'revenue_pct_change': round(((region_val['total_revenue_MUSD'] / country_val['total_revenue_MUSD']) * 100 - 100) if country_val['total_revenue_MUSD'] > 0 else 0, 2),
+                'water_MCM_country': country_val['water_use_MCM'],
+                'water_MCM_region': region_val['water_use_MCM'],
+                'water_pct_change': round(((region_val['water_use_MCM'] / country_val['water_use_MCM']) * 100 - 100) if country_val['water_use_MCM'] > 0 else 0, 2),
+                'transport_volume_Mtkm_country': country_val['transport_volume_Mtkm'],
+                'transport_volume_Mtkm_region': region_val['transport_volume_Mtkm'],
+                'transport_volume_pct_change': round(((region_val['transport_volume_Mtkm'] / country_val['transport_volume_Mtkm']) * 100 - 100) if country_val['transport_volume_Mtkm'] > 0 else 0, 2),
+                'energy_capacity_GW_country': country_val['energy_capacity_GW'],
+                'energy_capacity_GW_region': region_val['energy_capacity_GW'],
+                'energy_capacity_pct_change': round(((region_val['energy_capacity_GW'] / country_val['energy_capacity_GW']) * 100 - 100) if country_val['energy_capacity_GW'] > 0 else 0, 2),
+                'total_co2_kt_country': country_val['total_co2_kt'],
+                'total_co2_kt_region': region_val['total_co2_kt'],
+                'total_co2_pct_change': round(((region_val['total_co2_kt'] / country_val['total_co2_kt']) * 100 - 100) if country_val['total_co2_kt'] > 0 else 0, 2)
             })
         
         # Create comparison rows for constrained scenarios
@@ -605,7 +621,19 @@ def create_summary_mid_demand_unconstrained(df):
                 'cost_pct_change': round(((region_val['total_cost_MUSD'] / country_val['total_cost_MUSD']) * 100 - 100) if country_val['total_cost_MUSD'] > 0 else 0, 2),
                 'revenue_MUSD_country': country_val['total_revenue_MUSD'],
                 'revenue_MUSD_region': region_val['total_revenue_MUSD'],
-                'revenue_pct_change': round(((region_val['total_revenue_MUSD'] / country_val['total_revenue_MUSD']) * 100 - 100) if country_val['total_revenue_MUSD'] > 0 else 0, 2)
+                'revenue_pct_change': round(((region_val['total_revenue_MUSD'] / country_val['total_revenue_MUSD']) * 100 - 100) if country_val['total_revenue_MUSD'] > 0 else 0, 2),
+                'water_MCM_country': country_val['water_use_MCM'],
+                'water_MCM_region': region_val['water_use_MCM'],
+                'water_pct_change': round(((region_val['water_use_MCM'] / country_val['water_use_MCM']) * 100 - 100) if country_val['water_use_MCM'] > 0 else 0, 2),
+                'transport_volume_Mtkm_country': country_val['transport_volume_Mtkm'],
+                'transport_volume_Mtkm_region': region_val['transport_volume_Mtkm'],
+                'transport_volume_pct_change': round(((region_val['transport_volume_Mtkm'] / country_val['transport_volume_Mtkm']) * 100 - 100) if country_val['transport_volume_Mtkm'] > 0 else 0, 2),
+                'energy_capacity_GW_country': country_val['energy_capacity_GW'],
+                'energy_capacity_GW_region': region_val['energy_capacity_GW'],
+                'energy_capacity_pct_change': round(((region_val['energy_capacity_GW'] / country_val['energy_capacity_GW']) * 100 - 100) if country_val['energy_capacity_GW'] > 0 else 0, 2),
+                'total_co2_kt_country': country_val['total_co2_kt'],
+                'total_co2_kt_region': region_val['total_co2_kt'],
+                'total_co2_pct_change': round(((region_val['total_co2_kt'] / country_val['total_co2_kt']) * 100 - 100) if country_val['total_co2_kt'] > 0 else 0, 2)
             })
     
     comparison_df = pd.DataFrame(comparison_data)

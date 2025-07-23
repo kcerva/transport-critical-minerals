@@ -54,6 +54,40 @@ def create_all_data_from_energy_transport_file(input_file_path, output_file_path
                                                                                                         df_list[costs[2]], df_list[costs[3]],
                                                                                                         df_list[costs[4]])]
 
+    # Fix processing_type classifications if needed
+    print("Checking processing_type classifications...")
+    
+    # Define expected corrections
+    processing_type_corrections = [
+        {'mineral': 'nickel', 'stage': 2.0, 'expected_type': 'Early refining'},
+        {'mineral': 'copper', 'stage': 2.0, 'expected_type': 'Early refining'}
+    ]
+    
+    corrections_made = 0
+    for correction in processing_type_corrections:
+        mineral = correction['mineral']
+        stage = correction['stage']
+        expected_type = correction['expected_type']
+        
+        # Find records that need correction
+        mask = (df_list['reference_mineral'] == mineral) & (df_list['processing_stage'] == stage)
+        current_types = df_list.loc[mask, 'processing_type'].unique()
+        
+        # Only apply correction if needed
+        if len(current_types) > 0 and expected_type not in current_types:
+            old_type = current_types[0]
+            count = mask.sum()
+            df_list.loc[mask, 'processing_type'] = expected_type
+            print(f"Corrected {count} {mineral.title()} Stage {stage} records: {old_type} → {expected_type}")
+            corrections_made += count
+        elif expected_type in current_types:
+            print(f"{mineral.title()} Stage {stage} already correctly classified as '{expected_type}'")
+    
+    if corrections_made == 0:
+        print("No processing_type corrections needed - data already correct")
+    else:
+        print(f"Total corrections made: {corrections_made}")
+    
     # Save to new Excel file
     print(f"Saving aggregated data to: {output_file_path}")
     df_list.to_excel(output_file_path, index=False)
