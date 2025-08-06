@@ -60,8 +60,8 @@ def plot_goal_comparisons_2040(df, output_dir, metric_column, metric_title, metr
         if df_constraint.empty:
             continue
         
-        # Create 3-subplot figure: BAU, Early Refining, Precursor
-        fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+        # Create 3-subplot figure: BAU, Early Refining, Precursor (3 rows for better comparison)
+        fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
         
         goals = ["Business as Usual", "Early Refining", "Precursor related product"]
         
@@ -125,8 +125,8 @@ def plot_goal_comparisons_2040(df, output_dir, metric_column, metric_title, metr
                 annotate_bar_labels(ax, pivot, orientation="horizontal", min_display_frac=0.1)
         
         # Overall figure formatting
-        constraint_type = "Nationalist" if "country" in constraint else "Regionalist"
-        constraint_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
         
         title_suffix = f" - {country_iso3}" if country_iso3 else ""
         fig.suptitle(f"2040 Goal Comparison: {metric_title} - {constraint_type} {constraint_status}{title_suffix}", 
@@ -196,8 +196,8 @@ def plot_production_goal_comparison_by_processing_type(df, output_dir, country_i
         if df_constraint.empty:
             continue
         
-        # Create figure with 3 subplots for goals
-        fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+        # Create figure with 3 subplots for goals (3 rows for better comparison)
+        fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
         goals = ["Business as Usual", "Early Refining", "Precursor related product"]
         
         for ax, goal in zip(axes, goals):
@@ -246,8 +246,8 @@ def plot_production_goal_comparison_by_processing_type(df, output_dir, country_i
                 annotate_bar_labels(ax, pivot, orientation="horizontal", min_display_frac=0.1)
         
         # Overall formatting
-        constraint_type = "Nationalist" if "country" in constraint else "Regionalist"
-        constraint_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
         
         fig.suptitle(f"2040 Production by Processing Type: Goal Comparison - {country_iso3} - {constraint_type} {constraint_status}", 
                     fontsize=16, fontweight="bold")

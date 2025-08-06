@@ -242,7 +242,7 @@ def create_production_by_type_table(df, to_kt=False):
     factor = 1e3 if to_kt else 1e6
     df['production'] = df['production_tonnes'] / factor
     pivot = df.pivot_table(
-        index=['scenario', 'processing_type', 'year'],
+        index=['scenario', 'constraint', 'processing_type', 'year'],
         columns='reference_mineral',
         values='production',
         aggfunc='sum',
@@ -287,10 +287,11 @@ def calc_value_added(group):
     for i in range(1, len(group)):
         prev = group.iloc[i - 1]
         curr = group.iloc[i]
-        if prev["production_tonnes"] > 0:
+        # Use production_tonnes_for_costs exclusively for value addition calculations
+        if prev["production_tonnes_for_costs"] > 0:
             group.at[curr.name, "value_added"] = (
-                (curr["price_usd_per_tonne"] * curr["production_tonnes"]) -
-                (prev["production_cost_usd_per_tonne"] * prev["production_tonnes"])
+                (curr["price_usd_per_tonne"] * curr["production_tonnes_for_costs"]) -
+                (prev["production_cost_usd_per_tonne"] * prev["production_tonnes_for_costs"])
             )
     return group
 
@@ -299,7 +300,7 @@ def create_value_added_totals_legacy(df, to_kt=False):
     df = df[df["processing_stage"] > 0].copy()
 
     if to_kt:
-        df["production_tonnes"] = df["production_tonnes"] / 1e3
+        df["production_tonnes_for_costs"] = df["production_tonnes_for_costs"] / 1e3
 
     df["value_added"] = 0.0
 
@@ -331,7 +332,7 @@ def create_value_added_tables(df, to_kt=False):
     df = df[df["processing_stage"] > 0].copy()
 
     # Handle unit conversion for production if needed
-    df['production_tonnes'] = df['production_tonnes'] / (1e3 if to_kt else 1)
+    df['production_tonnes_for_costs'] = df['production_tonnes_for_costs'] / (1e3 if to_kt else 1)
     df['value_added'] = 0.0
 
     # Apply value added logic per group
@@ -477,9 +478,16 @@ def create_summary_mid_demand_unconstrained(df):
     scenario_2040_patterns = ['bau_2040', 'early_refining_2040', 'precursor_2040']
     
     # Filter for relevant constraints and 2040 scenarios + baseline
+    # Use boolean OR instead of problematic regex pattern
+    scenario_mask = (
+        df['scenario'].str.contains('bau_2040', na=False) |
+        df['scenario'].str.contains('early_refining_2040', na=False) |
+        df['scenario'].str.contains('precursor_2040', na=False) |
+        df['scenario'].str.contains('2022_baseline', na=False)
+    )
     df_filtered = df[
         df['constraint'].isin(['country_unconstrained', 'region_unconstrained', 'country_constrained', 'region_constrained']) &
-        (df['scenario'].str.contains('|'.join(scenario_2040_patterns + ['2022_baseline']), na=False))
+        scenario_mask
     ].copy()
     
     # Extract goal type from scenario
@@ -644,6 +652,98 @@ def create_summary_mid_demand_unconstrained(df):
     else:
         return summary_df
 
+def create_simplified_summary_table(df, to_kt=False):
+    """Create simplified summary table with goal_type, year, constraint_comparison, variable, country, region, percentage_change"""
+    
+    # Define scenarios mapping
+    scenario_mapping = {
+        'bau_2040_mid_min_threshold_metal_tons': ('Business as Usual', 2040, 'country'),
+        'bau_2040_mid_max_threshold_metal_tons': ('Business as Usual', 2040, 'region'),
+        'early_refining_2040_mid_min_threshold_metal_tons': ('Early Refining', 2040, 'country'),
+        'early_refining_2040_mid_max_threshold_metal_tons': ('Early Refining', 2040, 'region'),
+        'precursor_2040_mid_min_threshold_metal_tons': ('Precursor', 2040, 'country'), 
+        'precursor_2040_mid_max_threshold_metal_tons': ('Precursor', 2040, 'region'),
+        '2022_baseline': ('Baseline', 2022, 'actual')
+    }
+    
+    # Filter for mid scenarios only
+    relevant_scenarios = list(scenario_mapping.keys())
+    df_filtered = df[df['scenario'].isin(relevant_scenarios)].copy()
+    
+    if df_filtered.empty:
+        return pd.DataFrame()
+    
+    # Define variables to track
+    variables = [
+        ('production_tonnes', 'Production', 1000 if not to_kt else 1, 'kt'),
+        ('revenue_usd', 'Revenue', 1e6, 'Million USD'),
+        ('energy_tonsCO2eq', 'CO2 Emissions', 1000, 'kt CO2eq'),
+        ('water_usage_m3', 'Water Usage', 1e6, 'Million m³')
+    ]
+    
+    summary_data = []
+    
+    for variable_col, variable_name, divisor, unit in variables:
+        if variable_col not in df_filtered.columns:
+            continue
+            
+        # Aggregate by scenario and constraint
+        agg_data = df_filtered.groupby(['scenario', 'constraint'])[variable_col].sum().reset_index()
+        
+        # Add scenario metadata
+        agg_data['goal_type'] = agg_data['scenario'].map(lambda x: scenario_mapping.get(x, ('Unknown', 0, 'unknown'))[0])
+        agg_data['year'] = agg_data['scenario'].map(lambda x: scenario_mapping.get(x, ('Unknown', 0, 'unknown'))[1])
+        agg_data['policy_type'] = agg_data['scenario'].map(lambda x: scenario_mapping.get(x, ('Unknown', 0, 'unknown'))[2])
+        agg_data['value_scaled'] = agg_data[variable_col] / divisor
+        
+        # Create comparison pairs
+        for goal_type in ['Business as Usual', 'Early Refining', 'Precursor']:
+            for constraint in ['unconstrained', 'constrained']:
+                # Get country and region values
+                country_data = agg_data[
+                    (agg_data['goal_type'] == goal_type) & 
+                    (agg_data['constraint'] == f'country_{constraint}')
+                ]
+                region_data = agg_data[
+                    (agg_data['goal_type'] == goal_type) & 
+                    (agg_data['constraint'] == f'region_{constraint}')
+                ]
+                
+                if not country_data.empty and not region_data.empty:
+                    country_val = country_data['value_scaled'].iloc[0]
+                    region_val = region_data['value_scaled'].iloc[0]
+                    
+                    # Calculate percentage change
+                    pct_change = ((region_val - country_val) / country_val * 100) if country_val > 0 else 0
+                    
+                    summary_data.append({
+                        'goal_type': goal_type,
+                        'year': 2040,
+                        'constraint_comparison': f'Country_vs_Regional_{constraint.title()}',
+                        'variable': f'{variable_name} ({unit})',
+                        'country': round(country_val, 2),
+                        'region': round(region_val, 2),
+                        'percentage_change': round(pct_change, 2)
+                    })
+    
+    # Add 2022 baseline if available
+    baseline_data = df_filtered[df_filtered['scenario'] == '2022_baseline']
+    if not baseline_data.empty:
+        for variable_col, variable_name, divisor, unit in variables:
+            if variable_col in baseline_data.columns:
+                baseline_val = baseline_data[variable_col].sum() / divisor
+                summary_data.append({
+                    'goal_type': 'Baseline',
+                    'year': 2022,
+                    'constraint_comparison': 'Actual',
+                    'variable': f'{variable_name} ({unit})',
+                    'country': round(baseline_val, 2),
+                    'region': round(baseline_val, 2),
+                    'percentage_change': 0.0
+                })
+    
+    return pd.DataFrame(summary_data)
+
 
 def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, country_output_folder: str):
     df = df.copy()
@@ -684,6 +784,11 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
         # Add long-format summary table
         summary_df = create_summary_mid_demand_unconstrained(df)
         summary_df.to_excel(writer, sheet_name="summary_table", index=False)
+        
+        # Add simplified summary table
+        simplified_summary = create_simplified_summary_table(df, to_kt=False)
+        if not simplified_summary.empty:
+            simplified_summary.to_excel(writer, sheet_name="simplified_summary", index=False)
 
     # ---- Country-Specific Pivot Files ----
     for iso3 in df['iso3'].dropna().unique():
@@ -722,6 +827,11 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
                 # Add long-format summary for country
                 summary_df = create_summary_mid_demand_unconstrained(df_country)
                 summary_df.to_excel(writer, sheet_name="summary_table", index=False)
+                
+                # Add simplified summary table for country
+                simplified_summary = create_simplified_summary_table(df_country, to_kt=True)
+                if not simplified_summary.empty:
+                    simplified_summary.to_excel(writer, sheet_name="simplified_summary", index=False)
 
         except Exception as e:
             print(f"Error generating pivot file for {iso3}: {e}")
