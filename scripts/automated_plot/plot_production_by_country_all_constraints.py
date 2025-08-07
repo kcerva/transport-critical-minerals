@@ -144,3 +144,144 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         saved_paths.append(filepath)
 
     return saved_paths
+
+def plot_production_scenario_comparison_subplots(df, output_dir):
+    """Create proper scenario comparison subplots with 3 rows (BAU, Early Refining, Precursor)"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Filter for 2040 scenarios only and mid demand levels
+    df_filtered = df[
+        (df["processing_stage"] > 0) &
+        (df["scenario"].str.contains("2040")) &
+        (
+            ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+        )
+    ]
+    
+    if df_filtered.empty:
+        return []
+    
+    # Define scenario mapping
+    scenario_mapping = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Processing', 
+        'precursor_2040': 'Product Manufacturing'
+    }
+    
+    # Apply scenario processing type filtering like in the main function
+    def get_processing_type_for_scenario(scenario):
+        if 'bau_2040' in scenario:
+            return 'Beneficiation'
+        elif 'early_refining_2040' in scenario:
+            return 'Early refining'
+        elif 'precursor_2040' in scenario:
+            return 'Precursor related product'
+        return None
+    
+    # Filter by goal-specific processing types
+    def should_include_row(row):
+        expected_processing_type = get_processing_type_for_scenario(row["scenario"])
+        return expected_processing_type and row["processing_type"] == expected_processing_type
+    
+    df_filtered = df_filtered[df_filtered.apply(should_include_row, axis=1)]
+    
+    saved_paths = []
+    
+    # Group by constraint only (not scenario) to compare scenarios within each constraint
+    for constraint, constraint_group in df_filtered.groupby("constraint"):
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"  
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+        
+        # Get scenarios present in this constraint group
+        available_scenarios = []
+        scenario_data = {}
+        
+        for scenario_key, scenario_name in scenario_mapping.items():
+            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_filtered.empty:
+                available_scenarios.append((scenario_key, scenario_name))
+                scenario_data[scenario_key] = scenario_data_filtered
+        
+        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+            continue
+            
+        # Create subplot figure with one column, multiple rows
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=True)
+        if len(available_scenarios) == 1:
+            axes = [axes]
+        
+        figure_title = f"Scenario Comparison — {constraint_type} {constraint_status}"
+        
+        for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
+            ax = axes[i]
+            group_data = scenario_data[scenario_key]
+            
+            # Aggregate by country and mineral
+            grouped = group_data.groupby(["iso3", "reference_mineral"])["production_tonnes"].sum().reset_index()
+            grouped["production_million_tonnes"] = grouped["production_tonnes"] / 1e6
+            
+            # Create pivot for stacked bar chart
+            pivot = grouped.pivot_table(
+                index="iso3",
+                columns="reference_mineral", 
+                values="production_million_tonnes",
+                fill_value=0
+            )
+            
+            if not pivot.empty:
+                pivot["total"] = pivot.sum(axis=1)
+                pivot = pivot.sort_values(by="total", ascending=True).drop(columns="total")
+                
+                # Plot stacked horizontal bar chart
+                colors = [reference_mineral_colormap.get(col, "#999999") for col in pivot.columns]
+                pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
+                
+                # Styling
+                ax.set_title(f"{scenario_name}", fontsize=18, fontweight="bold")
+                ax.set_ylabel("Country", fontsize=14)
+                if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
+                    ax.set_xlabel("Production (million tonnes)", fontsize=14)
+                ax.tick_params(labelsize=12)
+                ax.grid(axis="x", linestyle="--", alpha=0.6)
+                ax.set_axisbelow(True)
+                
+                # Add mineral labels on bars
+                for j, country in enumerate(pivot.index):
+                    cumulative_left = 0
+                    for mineral in pivot.columns:
+                        width = pivot.loc[country, mineral] 
+                        if width > 0.05:  # Only label significant segments
+                            ax.text(
+                                cumulative_left + width / 2,
+                                j,
+                                reference_mineral_namemap.get(mineral, ""),
+                                ha="center", va="center",
+                                fontsize=10, color="white", fontweight="bold"
+                            )
+                        cumulative_left += width
+                
+                # Legend only on top subplot
+                if i == 0:
+                    ax.legend(
+                        title="Mineral",
+                        loc="upper left", 
+                        bbox_to_anchor=(1.01, 1),
+                        fontsize=11,
+                        title_fontsize=12
+                    )
+                else:
+                    ax.legend().set_visible(False)
+            
+        # Overall figure styling
+        fig.suptitle(figure_title, fontsize=20, fontweight="bold")
+        plt.tight_layout(rect=[0, 0, 0.88, 0.97])
+        
+        # Save figure
+        filename = f"production_scenario_comparison_{constraint}_subplots.png"
+        filepath = os.path.join(output_dir, filename)
+        fig.savefig(filepath, dpi=300)
+        plt.close(fig)
+        saved_paths.append(filepath)
+    
+    return saved_paths

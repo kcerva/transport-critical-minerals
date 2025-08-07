@@ -396,7 +396,8 @@ def create_single_metric_table(df, col, unit_label):
 
 def create_normalized_revenue_table_by_stage_and_type(df, to_kt=False):
     df = df.copy()
-    df = df[(df["processing_stage"] > 0) & (df["production_tonnes"] > 0)]
+    # Filter for processing stages > 0 AND production_tonnes_for_costs > 0 (economically viable production)
+    df = df[(df["processing_stage"] > 0) & (df["production_tonnes_for_costs"] > 0)]
 
     group_cols = [
         "scenario", "constraint", "processing_stage", "processing_type", "reference_mineral"
@@ -404,32 +405,41 @@ def create_normalized_revenue_table_by_stage_and_type(df, to_kt=False):
 
     grouped = df.groupby(group_cols).agg({
         "revenue_usd": "sum",
-        "production_tonnes": "sum"
+        "production_tonnes_for_costs": "sum"  # CORRECTED: Use production_tonnes_for_costs
     }).reset_index()
 
-    grouped["norm_revenue"] = grouped["revenue_usd"] / grouped["production_tonnes"]
+    # CORRECTED: Normalize by economically viable production, not total production capacity
+    grouped["norm_revenue"] = grouped["revenue_usd"] / grouped["production_tonnes_for_costs"]
 
-    pivot = grouped.pivot_table(
+    # CORRECTED: Use production-weighted aggregation instead of simple mean
+    # Group by processing_type (not stage) and calculate weighted average across stages
+    final_grouped = grouped.groupby(["processing_type", "scenario", "constraint", "reference_mineral"]).apply(
+        lambda x: (x["revenue_usd"].sum() / x["production_tonnes_for_costs"].sum()) if x["production_tonnes_for_costs"].sum() > 0 else 0
+    ).reset_index(name="norm_revenue_weighted")
+
+    pivot = final_grouped.pivot_table(
         index=["processing_type", "scenario", "constraint"],
-        columns="reference_mineral",
-        values="norm_revenue",
-        aggfunc="mean"
+        columns="reference_mineral", 
+        values="norm_revenue_weighted",
+        fill_value=0
     ).reset_index()
 
-    pivot["Total"] = pivot[
-        [col for col in pivot.columns if col not in ["processing_type", "scenario", "constraint"]]
-    ].sum(axis=1)
+    # Calculate total as sum (weighted by mineral production within each processing type)
+    mineral_cols = [col for col in pivot.columns if col not in ["processing_type", "scenario", "constraint"]]
+    pivot["Total"] = pivot[mineral_cols].sum(axis=1)
 
     return pivot
 
-def create_normalized_value_added_table_by_stage_and_type(df, to_kt=False): # wrong, need correct calc of value addition
+def create_normalized_value_added_table_by_stage_and_type(df, to_kt=False):
     df = df.copy()
-    df = df[(df["processing_stage"] > 0) & (df["production_tonnes"] > 0)]
+    # Filter for processing stages > 0 AND production_tonnes_for_costs > 0 (economically viable production)
+    df = df[(df["processing_stage"] > 0) & (df["production_tonnes_for_costs"] > 0)]
 
     if "value_added" not in df.columns:
+        # CORRECTED: Use production_tonnes_for_costs for value added calculation
         df["value_added"] = (
-            df["price_usd_per_tonne"] * df["production_tonnes"]
-            - df["production_cost_usd_per_tonne"] * df["production_tonnes"]
+            df["price_usd_per_tonne"] * df["production_tonnes_for_costs"]
+            - df["production_cost_usd_per_tonne"] * df["production_tonnes_for_costs"]
         )
 
     group_cols = [
@@ -438,21 +448,28 @@ def create_normalized_value_added_table_by_stage_and_type(df, to_kt=False): # wr
 
     grouped = df.groupby(group_cols).agg({
         "value_added": "sum",
-        "production_tonnes": "sum"
+        "production_tonnes_for_costs": "sum"  # CORRECTED: Use production_tonnes_for_costs
     }).reset_index()
 
-    grouped["norm_value_added"] = grouped["value_added"] / grouped["production_tonnes"]
+    # CORRECTED: Normalize by economically viable production, not total production capacity
+    grouped["norm_value_added"] = grouped["value_added"] / grouped["production_tonnes_for_costs"]
 
-    pivot = grouped.pivot_table(
+    # CORRECTED: Use production-weighted aggregation instead of simple mean
+    # Group by processing_type (not stage) and calculate weighted average across stages
+    final_grouped = grouped.groupby(["processing_type", "scenario", "constraint", "reference_mineral"]).apply(
+        lambda x: (x["value_added"].sum() / x["production_tonnes_for_costs"].sum()) if x["production_tonnes_for_costs"].sum() > 0 else 0
+    ).reset_index(name="norm_value_added_weighted")
+
+    pivot = final_grouped.pivot_table(
         index=["processing_type", "scenario", "constraint"],
         columns="reference_mineral",
-        values="norm_value_added",
-        aggfunc="mean"
+        values="norm_value_added_weighted", 
+        fill_value=0
     ).reset_index()
 
-    pivot["Total"] = pivot[
-        [col for col in pivot.columns if col not in ["processing_type", "scenario", "constraint"]]
-    ].sum(axis=1)
+    # Calculate total as sum (weighted by mineral production within each processing type)
+    mineral_cols = [col for col in pivot.columns if col not in ["processing_type", "scenario", "constraint"]]
+    pivot["Total"] = pivot[mineral_cols].sum(axis=1)
 
     return pivot
 

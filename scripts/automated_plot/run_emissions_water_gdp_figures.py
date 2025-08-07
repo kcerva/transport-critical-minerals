@@ -49,7 +49,7 @@ except Exception as e:
 # Generate GDP share figures (Revenue share)
 print("\n=== Generating Revenue Share of GDP Figures ===")
 try:
-    from plot_gdp_share_by_country_all_constraints import compute_revenue_share
+    from plot_gdp_share_by_country_all_constraints import compute_revenue_share, plot_gdp_share_scenario_comparison_subplots
     
     # Compute revenue share data
     revenue_share_df = compute_revenue_share(df)
@@ -63,6 +63,13 @@ try:
         ylabel='Revenue Share of GDP (%)'
     )
     print(f"✓ Generated {len(revenue_files) if revenue_files else 0} revenue share of GDP figures")
+    
+    # Generate scenario comparison subplots
+    revenue_subplot_files = plot_gdp_share_scenario_comparison_subplots(
+        df, output_base, compute_revenue_share, 'value', 'Revenue Share of GDP', 'Revenue Share of GDP (%)'
+    )
+    print(f"✓ Generated {len(revenue_subplot_files) if revenue_subplot_files else 0} revenue share scenario comparison subplots")
+    
 except Exception as e:
     print(f"✗ Error generating revenue share figures: {e}")
 
@@ -83,8 +90,26 @@ try:
         ylabel='Value Addition Share of GDP (%)'
     )
     print(f"✓ Generated {len(value_files) if value_files else 0} value addition share of GDP figures")
+    
+    # Generate scenario comparison subplots
+    value_subplot_files = plot_gdp_share_scenario_comparison_subplots(
+        df, output_base, compute_value_addition_share, 'value', 'Value Addition Share of GDP', 'Value Addition Share of GDP (%)'
+    )
+    print(f"✓ Generated {len(value_subplot_files) if value_subplot_files else 0} value addition share scenario comparison subplots")
+    
 except Exception as e:
     print(f"✗ Error generating value addition share figures: {e}")
+
+# Generate Production scenario comparison subplots
+print("\n=== Generating Production Scenario Comparison Subplots ===")
+try:
+    from plot_production_by_country_all_constraints import plot_production_scenario_comparison_subplots
+    
+    production_subplot_files = plot_production_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(production_subplot_files) if production_subplot_files else 0} production scenario comparison subplots")
+    
+except Exception as e:
+    print(f"✗ Error generating production scenario comparison subplots: {e}")
 
 print("\n✅ Figure generation complete!")
 print(f"Output directory: {output_base}")
