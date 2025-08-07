@@ -17,9 +17,9 @@ def get_country_output_path(base_path, country, subfolder='single'):
     return path
 
 def parse_constraint_label(constraint):
-    c_type = "Nationalist" if "country" in constraint else "Regionalist"
-    c_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
-    return f"{c_type} {c_status}"
+    c_type = "National Focus" if "country" in constraint else "Regional Integration"
+    c_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+    return f"{c_type} ({c_status})"
 
 from plot_production_by_country_all_constraints import plot_production_by_country_all_constraints
 from plot_gdp_share_by_country_all_constraints import (
@@ -33,6 +33,7 @@ from plot_emissions_water_all_countries import (
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
 from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
+from plot_supply_curves import create_supply_curves
 
 def run_plot_production(df, output_dir, config):
     # Updated for new scenario structure - goals are determined by scenario name, not year
@@ -108,8 +109,8 @@ def generate_single_country_plots(df, country, output_dir):
                 ), row=i+1, col=1)
 
             # Simplify scenario label for title
-            constraint_type = "Nationalist" if "country" in constraint else "Regionalist"
-            constraint_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+            constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+            constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
             scenario_clean = scenario_general.replace("_threshold_metal_tons", "")
 
             title = f"{display_name} — {constraint_type} {constraint_status} ({scenario_clean})"
@@ -210,6 +211,15 @@ def run_country_docx_reports(df, output_dir, config):
     generate_all_country_docx_reports(df, docx_output_dir)
     print(f"DOCX reports completed. Saved to: {docx_output_dir}")
 
+def run_supply_curves(df, output_dir, config):
+    """Generate supply curve plots for all minerals and scenarios"""
+    supply_curve_dir = os.path.join(output_dir, 'supply_curves')
+    os.makedirs(supply_curve_dir, exist_ok=True)
+    
+    print("Generating supply curve plots...")
+    saved_paths = create_supply_curves(df, supply_curve_dir)
+    print(f"Supply curve plots completed. Generated {len(saved_paths)} plots in: {supply_curve_dir}")
+
 AVAILABLE_PLOTS = {
     "revenue_gdp_share": run_plot_revenue,
     "value_addition_gdp_share": run_plot_value_addition,
@@ -220,19 +230,21 @@ AVAILABLE_PLOTS = {
     "country_differences": run_country_differences_all,
     "all_country_comparisons": run_all_country_comparisons,
     "goal_comparisons_all_countries": run_goal_comparisons_all_countries,
-    "country_docx_reports": run_country_docx_reports
+    "country_docx_reports": run_country_docx_reports,
+    "supply_curves": run_supply_curves
 }
 
 PLOT_GROUPS = {
     "all_countries": [
         "production_all_countries", "emissions_all_countries", "water_all_countries",
         "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons",
-        "goal_comparisons_all_countries"
+        "goal_comparisons_all_countries", "supply_curves"
     ],
     "single_countries": ["single_country_all", "country_differences"],
     "core": ["production_all_countries", "emissions_all_countries", "goal_comparisons_all_countries"],
     "reports": ["country_docx_reports"],
-    "goal_analysis": ["goal_comparisons_all_countries"]
+    "goal_analysis": ["goal_comparisons_all_countries"],
+    "supply_analysis": ["supply_curves"]
 }
 
 def run_selected_plots(selected=None, group=None):

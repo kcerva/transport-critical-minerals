@@ -19,14 +19,14 @@ from mapping_properties import mineral_properties
 # Get the mineral properties including colors
 mineral_props = mineral_properties()
 
-# Create mineral color mapping
+# Create mineral color mapping - updated with optimized color assignments
 MINERAL_COLORS = {
-    'copper': '#f46d43',
-    'cobalt': '#fdae61', 
-    'manganese': '#fee08b',
-    'lithium': '#c2a5cf',
-    'graphite': '#66c2a5',
-    'nickel': '#3288bd'
+    'copper': '#fee08b',    # was #f46d43 - now yellow for max separation from cobalt
+    'cobalt': '#3288bd',    # was #fdae61 - now blue for max separation from copper  
+    'manganese': '#f46d43', # was #fee08b - now orange/red
+    'lithium': '#c2a5cf',   # unchanged - purple
+    'graphite': '#66c2a5',  # unchanged - green
+    'nickel': '#fdae61'     # was #3288bd - now orange for separation from cobalt
 }
 
 def load_config():

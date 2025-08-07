@@ -5,12 +5,13 @@ import sys
 
 def mineral_properties():
     reference_minerals = ["copper","cobalt","manganese","lithium","graphite","nickel"]
-    reference_mineral_colors = ["#cc4c02","#3690c0","#88419d","#d7301f","#252525","#737373"]
+    # OPTIMAL COLOR REASSIGNMENT (Jan 2025) - Updated to match automated_plot colors
+    reference_mineral_colors = ["#fee08b","#3288bd","#fdae61","#c2a5cf","#66c2a5","#f46d43"]
     
     mineral_properties = {
                             "copper":{
                                         "mineral_symbol":"Cu",
-                                        "mineral_color":"#f46d43",
+                                        "mineral_color":"#fee08b",
                                         "mine_color":"#662506",
                                         "node_colors":["#662506","#cc4c02","#fe9929"],
                                         "edge_color":"#525252",
@@ -21,7 +22,7 @@ def mineral_properties():
                                     },
                             "cobalt":{
                                         "mineral_symbol":"Co",
-                                        "mineral_color":"#fdae61",
+                                        "mineral_color":"#3288bd",
                                         "mine_color":"#023858",
                                         "node_colors":["#023858","#0570b0","#74a9cf"],
                                         "edge_color":"#525252",
@@ -32,7 +33,7 @@ def mineral_properties():
                                     },
                             "manganese":{
                                         "mineral_symbol":"Mn",
-                                        "mineral_color":"#fee08b",
+                                        "mineral_color":"#fdae61",
                                         "mine_color":"#4d004b",
                                         "node_colors":["#4d004b","#8c96c6","#88419d"],
                                         "edge_color":"#525252",
@@ -65,7 +66,7 @@ def mineral_properties():
                                     },
                             "nickel":{
                                         "mineral_symbol":"Ni",
-                                        "mineral_color":"#3288bd",
+                                        "mineral_color":"#f46d43",
                                         "mine_color":"#67000d",
                                         "node_colors":["#67000d","#cb181d","#fb6a4a"],
                                         "edge_color":"#525252",

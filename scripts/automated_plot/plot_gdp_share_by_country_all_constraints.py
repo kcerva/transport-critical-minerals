@@ -58,8 +58,8 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
         if len(years) == 1:
             axes = [axes]
 
-        constraint_type = "Nationalist" if "country" in constraint else "Regionalist"
-        constraint_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
         figure_title = f"{title_prefix} — {constraint_type} {constraint_status} ({scenario_clean})"
 
         for ax, year_val in zip(axes, years):

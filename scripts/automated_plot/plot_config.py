@@ -3,7 +3,18 @@
 
 reference_minerals = ["cobalt", "copper", "graphite", "lithium", "manganese", "nickel"]
 reference_minerals_short = ["Co", "Cu", "Gr", "Li", "Mn", "Ni"]
-reference_mineral_colors = ["#fdae61", "#f46d43", "#66c2a5", "#c2a5cf", "#fee08b", "#3288bd"]
+
+# OPTIMAL COLOR REASSIGNMENT (Jan 2025)
+# Solves copper-cobalt and cobalt-nickel overlap issues in map visualizations
+# Same colors, better assignments for overlapping elements
+reference_mineral_colors = ["#3288bd", "#fee08b", "#66c2a5", "#c2a5cf", "#fdae61", "#f46d43"]
+# Color mapping explanation:
+# Cobalt: #3288bd (blue - was nickel) - maximum separation from copper
+# Copper: #fee08b (yellow - was manganese) - maximum separation from cobalt  
+# Graphite: #66c2a5 (teal - unchanged)
+# Lithium: #c2a5cf (purple - unchanged)
+# Manganese: #fdae61 (orange - was cobalt) 
+# Nickel: #f46d43 (orange-red - was copper)
 
 reference_mineral_colormap = dict(zip(reference_minerals, reference_mineral_colors))
 reference_mineral_namemap = dict(zip(reference_minerals, reference_minerals_short))

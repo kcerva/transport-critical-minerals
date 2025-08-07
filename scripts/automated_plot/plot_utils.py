@@ -12,7 +12,10 @@ PROCESSING_TYPE_COLORS = {
 
 REFERENCE_MINERALS = ["cobalt", "copper", "graphite", "lithium", "manganese", "nickel"]
 REFERENCE_MINERALS_SHORT = ["Co", "Cu", "Gr", "Li", "Mn", "Ni"]
-REFERENCE_MINERAL_COLORS = ["#fdae61", "#f46d43", "#66c2a5", "#c2a5cf", "#fee08b", "#3288bd"]
+# REFERENCE_MINERAL_COLORS = ["#fdae61", "#f46d43", "#66c2a5", "#c2a5cf", "#fee08b", "#3288bd"]
+
+# OPTIMAL COLOR REASSIGNMENT (Jan 2025) - matches plot_config.py
+REFERENCE_MINERAL_COLORS = ["#3288bd", "#fee08b", "#66c2a5", "#c2a5cf", "#fdae61", "#f46d43"]  
 
 REFERENCE_MINERAL_COLORMAP = dict(zip(REFERENCE_MINERALS, REFERENCE_MINERAL_COLORS))
 REFERENCE_MINERAL_NAMEMAP = dict(zip(REFERENCE_MINERALS, REFERENCE_MINERALS_SHORT))

@@ -22,9 +22,9 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         if 'bau_2040' in scenario:
             return "Business as Usual"
         elif 'early_refining_2040' in scenario:
-            return "Early Refining"
+            return "Early Processing"
         elif 'precursor_2040' in scenario:
-            return "Precursor related product"
+            return "Product Manufacturing"
         elif '2022_baseline' in scenario:
             return "Baseline"
         else:
@@ -34,8 +34,8 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         """Map goal to expected processing_type"""
         goal_processing_map = {
             'Business as Usual': 'Beneficiation',
-            'Early Refining': 'Early refining', 
-            'Precursor related product': 'Precursor related product',
+            'Early Processing': 'Early refining', 
+            'Product Manufacturing': 'Precursor related product',
             'Baseline': None  # For baseline, show all processing types
         }
         return goal_processing_map.get(goal)
@@ -77,8 +77,8 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         if len(years) == 1:
             axes = [axes]
 
-        constraint_type = "Nationalist" if "country" in constraint else "Regionalist"
-        constraint_status = "Unconstrained" if "unconstrained" in constraint else "Constrained"
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
         figure_title = f"{constraint_type} {constraint_status} ({scenario_clean})"
 
         for ax, year_val in zip(axes, years):

@@ -2,10 +2,11 @@ import pandas as pd
 import os
 import json
 
-def create_all_data_from_energy_transport_file(input_file_path, output_file_path):
+def create_all_data_from_combined_transport_file(input_file_path, output_file_path):
     """
-    Create all_data.xlsx from energy_transport_totals_by_stage.xlsx
+    Create all_data.xlsx from combined_transport_totals_by_stage.xlsx
     Reuses the exact aggregation logic from new_bar_charts.py but with updated file path
+    Note: This version uses combined transport totals without energy data for now
     """
     print(f"Reading data from: {input_file_path}")
     
@@ -25,34 +26,41 @@ def create_all_data_from_energy_transport_file(input_file_path, output_file_path
     print(f"Combined data shape: {df_list.shape}")
     print(f"Columns: {list(df_list.columns)}")
     
-    # Unit cost calculations (exact copy from new_bar_charts.py lines 1071-1083)
+    # Unit cost calculations - temporarily without energy (to be restored when energy results are ready)
     unit_costs = [
                     "export_transport_cost_usd_per_tonne",
                     "import_transport_cost_usd_per_tonne",
                     "production_cost_usd_per_tonne",
-                    "energy_opex_per_tonne",
-                    "energy_investment_usd_per_tonne"
+                    # TODO: Restore when energy results are ready
+                    # "energy_opex_per_tonne",
+                    # "energy_investment_usd_per_tonne"
                 ]
     
-    # Add energy when ready
-    df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
-                                                                                                        df_list[unit_costs[2]], df_list[unit_costs[3]],
-                                                                                                        df_list[unit_costs[4]])]
+    # Calculate total unit cost - temporarily without energy components
+    df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z for x,y,z in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
+                                                                                              df_list[unit_costs[2]])]
+    # TODO: Restore when energy results are ready
+    # df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
+    #                                                                                                     df_list[unit_costs[2]], df_list[unit_costs[3]],
+    #                                                                                                     df_list[unit_costs[4]])]
     df_list['production_transport_energy_unit_cost_usd_per_tonne'] = df_list['production_transport_energy_unit_cost_usd_per_tonne'].fillna(0)
 
-    # Total cost calculations (exact copy from new_bar_charts.py lines 1085-1096)
+    # Total cost calculations - temporarily without energy (to be restored when energy results are ready)
     costs = [
                 "export_transport_cost_usd",
                 "import_transport_cost_usd",
                 "production_cost_usd",
-                "energy_opex",
-                "energy_investment_usd"
+                # TODO: Restore when energy results are ready
+                # "energy_opex",
+                # "energy_investment_usd"
             ]
 
-    # Compute total cost
-    df_list["all_cost_usd"] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[costs[0]],df_list[costs[1]],
-                                                                                                        df_list[costs[2]], df_list[costs[3]],
-                                                                                                        df_list[costs[4]])]
+    # Compute total cost - temporarily without energy components
+    df_list["all_cost_usd"] = [x+y+z for x,y,z in zip(df_list[costs[0]],df_list[costs[1]], df_list[costs[2]])]
+    # TODO: Restore when energy results are ready
+    # df_list["all_cost_usd"] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[costs[0]],df_list[costs[1]],
+    #                                                                                                     df_list[costs[2]], df_list[costs[3]],
+    #                                                                                                     df_list[costs[4]])]
 
     # Fix processing_type classifications if needed
     print("Checking processing_type classifications...")
@@ -98,14 +106,15 @@ def create_all_data_from_energy_transport_file(input_file_path, output_file_path
 
 def create_unit_costs_file(df_list, output_data_path):
     """
-    Create unit_costs.xlsx file (copied from new_bar_charts.py lines 1102-1127)
+    Create unit_costs.xlsx file - temporarily without energy (to be restored when energy results are ready)
     """
     unit_costs = [
                     "export_transport_cost_usd_per_tonne",
                     "import_transport_cost_usd_per_tonne", 
                     "production_cost_usd_per_tonne",
-                    "energy_opex_per_tonne",
-                    "energy_investment_usd_per_tonne"
+                    # TODO: Restore when energy results are ready
+                    # "energy_opex_per_tonne",
+                    # "energy_investment_usd_per_tonne"
                 ]
     
     uc_list = df_list[["scenario", "reference_mineral", "iso3", 'processing_type',
@@ -121,8 +130,10 @@ def create_unit_costs_file(df_list, output_data_path):
     # - Use 'first' if a unit cost is expected to be constant within a group
     # - Use 'sum' for transport costs (since they can vary by country)
 
-    agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne",
-                                       "energy_opex_per_tonne", "energy_investment_usd_per_tonne"]}  # If cost is different per country
+    agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne"]}  # Transport costs
+    # TODO: Restore when energy results are ready
+    # agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne",
+    #                                    "energy_opex_per_tonne", "energy_investment_usd_per_tonne"]}  # If cost is different per country
     agg_dict["production_cost_usd_per_tonne"] = 'first'  
 
     # Aggregate data
@@ -139,7 +150,7 @@ def create_unit_costs_file(df_list, output_data_path):
 
 def main():
     """
-    Main function to create new all_data.xlsx from energy_transport_totals_by_stage.xlsx
+    Main function to create new all_data.xlsx from combined_transport_totals_by_stage.xlsx
     """
     # Load configuration
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -151,8 +162,8 @@ def main():
     # Set paths
     output_data_path = config['paths']['results']
     
-    # Input file - the new energy_transport_totals_by_stage.xlsx
-    input_file = os.path.join(output_data_path, "result_summaries", "energy_transport_totals_by_stage.xlsx")
+    # Input file - the new combined_transport_totals_by_stage.xlsx (without energy for now)
+    input_file = os.path.join(output_data_path, "result_summaries", "combined_transport_totals_by_stage.xlsx")
     
     # Output file - the new all_data.xlsx 
     output_file = os.path.join(output_data_path, "all_data.xlsx")
@@ -164,7 +175,7 @@ def main():
     
     try:
         # Create the aggregated data
-        df_aggregated = create_all_data_from_energy_transport_file(input_file, output_file)
+        df_aggregated = create_all_data_from_combined_transport_file(input_file, output_file)
         
         # Create unit costs file
         create_unit_costs_file(df_aggregated, output_data_path)

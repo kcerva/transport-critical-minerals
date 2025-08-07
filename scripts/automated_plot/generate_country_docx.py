@@ -41,7 +41,11 @@ from docx_utils import (
     create_executive_summary_table,
     format_constraint_name,
     format_scenario_name,
-    save_document
+    save_document,
+    add_key_findings_section,
+    standardise_column_name,
+    format_number_for_display,
+    add_table_of_contents
 )
 
 def get_country_name(iso3):
@@ -122,8 +126,8 @@ def add_metal_content_section(doc, df_country):
         if not metal_table.empty:
             # Add interpretation
             doc.add_paragraph(
-                "The following table shows the metal content (or mineral in the case of graphite) production (processing stage 0) across different "
-                "policy constraints and scenarios. Values are shown in kilotonnes (kt) for the country."
+                "This section shows mineral extraction quantities considering only the metal (or mineral in the case of graphite). "
+                "Values are shown in kilotonnes (kt)."
             )
             add_table_from_dataframe(doc, metal_table, 
                                    title="Metal Content Production by Constraint (kilotonnes)")
@@ -160,9 +164,9 @@ def add_production_analysis_section(doc, df_country, chart_paths):
                                       title=f"Production: {os.path.basename(chart_path)}")
         
         doc.add_paragraph(
-            "The production analysis shows output across different processing stages and types. "
-            "Processing stage 0 represents units of metal content at the extraction stage (or mineral in the case of graphite), while higher stages represent "
-            "value-added processing activities."
+            "This analysis reveals how different policy approaches affect production across the value chain. "
+            "Stage 0 refers to the metal content (or mineral in the case of graphite) extracted, whilst higher processing stages create increasing value through beneficiation, "
+            "early refining, and product manufacturing. The data shows potential opportunities for moving up the value chain."
         )
         
     except Exception as e:
@@ -206,9 +210,9 @@ def add_economic_analysis_section(doc, df_country, chart_paths):
                     add_image_from_path(doc, chart_path, title=f"Value Addition")
         
         doc.add_paragraph(
-            "The economic analysis examines revenue generation and value addition across different "
-            "processing activities and policy scenarios. Value addition represents the economic "
-            "benefit gained from higher-stage processing activities."
+            "This economic analysis demonstrates the financial impact of different mineral development strategies. Revenue shows total economic value generated, "
+            "whilst value addition specifically measures the economic benefit of processing beyond raw material extraction. "
+            "The comparison between policy approaches reveals potential trade-offs between domestic focus and regional integration strategies."
         )
         
     except Exception as e:
@@ -254,7 +258,7 @@ def add_environmental_impact_section(doc, df_country, chart_paths):
         
         doc.add_paragraph(
             "The environmental impact analysis covers water usage and CO2 emissions from both "
-            "transport and energy consumption across different policy scenarios."
+            "transport and energy consumption across different scenarios."
         )
         
     except Exception as e:
@@ -267,7 +271,7 @@ def add_policy_comparison_section(doc, df_country, chart_paths):
     try:
         doc.add_paragraph(
             "This section compares outcomes between different policy constraints: "
-            "Nationalist vs Regionalist approaches, and Constrained vs Unconstrained scenarios."
+            "National Focus vs Regional Integration approaches, and Environmentally Constrained vs Unconstrained scenarios."
         )
         
         # Add difference plots if available
@@ -280,7 +284,7 @@ def add_policy_comparison_section(doc, df_country, chart_paths):
         doc.add_paragraph(
             "The scenario comparisons show the quantitative differences in production, economic, and "
             "environmental outcomes under different policy scenarios. Positive values indicate "
-            "benefits of regionalist or unconstrained approaches."
+            "benefits of regional integration or environmentally unconstrained approaches."
         )
         
     except Exception as e:
@@ -293,7 +297,7 @@ def add_goal_comparison_section(doc, df_country, chart_paths):
     try:
         doc.add_paragraph(
             "This section compares the three 2040 development goals: Business as Usual (BAU), "
-            "Early Refining, and Precursor related product scenarios. These comparisons show "
+            "Early Refining, and Product Manufacturing scenarios. These comparisons show "
             "how different strategic objectives lead to varying outcomes in production, revenue, "
             "water consumption, and CO2 emissions."
         )
@@ -321,11 +325,22 @@ def generate_country_docx(df_country, iso3, output_dir):
     # Create document
     doc = create_country_document(country_name, iso3)
     
+    # Add table of contents
+    add_table_of_contents(doc)
+    
+    # Add key findings section first
+    try:
+        add_key_findings_section(doc, df_country)
+    except Exception as e:
+        print(f"Error adding key findings: {e}")
+    
     # Add executive summary table
     try:
         exec_summary = create_executive_summary_table(df_country)
         if not exec_summary.empty:
-            add_table_from_dataframe(doc, exec_summary, title="Key Metrics Summary")
+            add_table_from_dataframe(doc, exec_summary, 
+                                   title="Key Metrics Summary",
+                                   interpretation="This table summarises the key performance indicators across different development strategies and policy approaches.")
         else:
             doc.add_paragraph("Unable to generate executive summary metrics.")
     except Exception as e:
@@ -352,6 +367,9 @@ def generate_country_docx(df_country, iso3, output_dir):
         doc.add_page_break()
         
         add_goal_comparison_section(doc, df_country, chart_paths)
+        doc.add_page_break()
+        
+        add_summary_tables_section(doc, iso3)
     
     
     # Save document
@@ -382,6 +400,59 @@ def generate_all_country_docx_reports(df, output_dir):
     
     print(f"Generated {len(generated_reports)} DOCX reports")
     return generated_reports
+
+def add_summary_tables_section(doc, iso3):
+    """Add summary tables from pivot files to the document"""
+    try:
+        # Check if pivot table file exists for this country  
+        pivot_file = f"/home/karlac/critical_minerals_Africa/transport-outputs/results/pivot_tables/all_data_pivots_{iso3}.xlsx"
+        if not os.path.exists(pivot_file):
+            print(f"Pivot file not found for {iso3}: {pivot_file}")
+            return
+        
+        add_section_header(doc, f"Summary Tables - {get_country_name(iso3)}")
+        doc.add_paragraph("This section provides key summary tables extracted from detailed pivot analyses.")
+        
+        # Load pivot tables
+        try:
+            # Priority: Simplified summary table (the format we want)
+            try:
+                simplified_df = pd.read_excel(pivot_file, sheet_name='simplified_summary')
+                if not simplified_df.empty:
+                    doc.add_heading("Executive Summary Comparison", level=2)
+                    doc.add_paragraph("This table compares key metrics between country-focused and regional integration policy approaches.")
+                    add_table_from_dataframe(doc, simplified_df, "Policy approach comparison with percentage changes")
+                    doc.add_paragraph()
+            except:
+                print(f"Simplified summary sheet not found for {iso3}")
+            
+            # Production summary (fallback)
+            try:
+                production_df = pd.read_excel(pivot_file, sheet_name='production_kt')
+                if not production_df.empty:
+                    doc.add_heading("Production Summary (kt)", level=2)
+                    add_table_from_dataframe(doc, production_df.head(15), "Production by scenario, constraint, and processing stage")
+                    doc.add_paragraph()
+            except:
+                pass
+                
+            # Production by type summary (fallback)
+            try:
+                prod_type_df = pd.read_excel(pivot_file, sheet_name='production_by_type_kt')
+                if not prod_type_df.empty:
+                    doc.add_heading("Production by Processing Type (kt)", level=2)
+                    add_table_from_dataframe(doc, prod_type_df.head(15), "Production grouped by processing type")
+                    doc.add_paragraph()
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"Error reading pivot table sheets for {iso3}: {e}")
+            doc.add_paragraph(f"Unable to load summary tables. Error: {str(e)}")
+            
+    except Exception as e:
+        print(f"Error adding summary tables section for {iso3}: {e}")
+        doc.add_paragraph("Summary tables section could not be generated due to technical issues.")
 
 if __name__ == "__main__":
     # Load configuration
