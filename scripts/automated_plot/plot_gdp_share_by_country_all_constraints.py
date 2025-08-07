@@ -97,17 +97,17 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
             colors = [reference_mineral_colormapshort.get(col, "#999999") for col in pivot.columns]
             bars = pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
 
-            ax.set_title(f"{year_val}", fontsize=18, fontweight="bold")
-            ax.set_ylabel("Country", fontsize=14)
-            ax.set_xlabel(f"{ylabel}", fontsize=14)
-            ax.tick_params(labelsize=12)
+            ax.set_title(f"{year_val}", fontsize=14, fontweight="bold")
+            ax.set_ylabel("Country", fontsize=12)
+            ax.set_xlabel(f"{ylabel}", fontsize=12)
+            ax.tick_params(labelsize=11)
             ax.grid(axis="x", linestyle="--", alpha=0.6)
             ax.set_axisbelow(True)
 
             annotate_bar_labels(ax, pivot, orientation="horizontal")
             format_legend(ax, title="Mineral")
 
-        fig.suptitle(figure_title, fontsize=20, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
 
         filename = f"{title_prefix.lower().replace(' ', '_')}_{scenario_clean}_{constraint}_by_year_subplots.png".replace(" ", "_")
@@ -241,11 +241,11 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
                 pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
                 
                 # Styling
-                ax.set_title(f"{scenario_name}", fontsize=18, fontweight="bold")
-                ax.set_ylabel("Country", fontsize=14)
+                ax.set_title(f"{scenario_name}", fontsize=14, fontweight="bold")
+                ax.set_ylabel("Country", fontsize=12)
                 if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
-                    ax.set_xlabel(f"{ylabel}", fontsize=14)
-                ax.tick_params(labelsize=12)
+                    ax.set_xlabel(f"{ylabel}", fontsize=12)
+                ax.tick_params(labelsize=11)
                 ax.grid(axis="x", linestyle="--", alpha=0.6)
                 ax.set_axisbelow(True)
                 
@@ -270,14 +270,14 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
                         title="Mineral",
                         loc="upper left",
                         bbox_to_anchor=(1.01, 1),
-                        fontsize=11,
-                        title_fontsize=12
+                        fontsize=10,
+                        title_fontsize=11
                     )
                 else:
                     ax.legend().set_visible(False)
         
         # Overall figure styling
-        fig.suptitle(figure_title, fontsize=20, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
         
         # Save figure

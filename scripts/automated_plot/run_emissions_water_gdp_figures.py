@@ -33,16 +33,30 @@ os.makedirs(output_base, exist_ok=True)
 # Generate emissions figures
 print("\n=== Generating Emissions Figures ===")
 try:
+    from plot_emissions_water_all_countries import plot_emissions_scenario_comparison_subplots
+    
     emissions_files = plot_emissions_by_country_all_constraints(df, output_base)
     print(f"✓ Generated {len(emissions_files) if emissions_files else 0} emissions figures")
+    
+    # Generate emissions scenario comparison subplots (will be skipped until energy data available)
+    emissions_subplot_files = plot_emissions_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(emissions_subplot_files) if emissions_subplot_files else 0} emissions scenario comparison subplots")
+    
 except Exception as e:
     print(f"✗ Error generating emissions figures: {e}")
 
 # Generate water figures
 print("\n=== Generating Water Usage Figures ===")
 try:
+    from plot_emissions_water_all_countries import plot_water_scenario_comparison_subplots
+    
     water_files = plot_water_by_country_all_constraints(df, output_base)
     print(f"✓ Generated {len(water_files) if water_files else 0} water usage figures")
+    
+    # Generate water scenario comparison subplots
+    water_subplot_files = plot_water_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(water_subplot_files) if water_subplot_files else 0} water usage scenario comparison subplots")
+    
 except Exception as e:
     print(f"✗ Error generating water figures: {e}")
 

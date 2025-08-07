@@ -105,10 +105,10 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
 
             # Get goal type for this scenario group
             goal_type = group_g["goal_type"].iloc[0] if not group_g.empty else "Unknown"
-            ax.set_title(f"{year_val} - {goal_type}", fontsize=18, fontweight="bold")
-            ax.set_ylabel("Country", fontsize=14)
-            ax.set_xlabel("Production (million tonnes)", fontsize=14)
-            ax.tick_params(labelsize=12)
+            ax.set_title(f"{year_val} - {goal_type}", fontsize=14, fontweight="bold")
+            ax.set_ylabel("Country", fontsize=12)
+            ax.set_xlabel("Production (million tonnes)", fontsize=12)
+            ax.tick_params(labelsize=11)
             ax.grid(axis="x", linestyle="--", alpha=0.6)
             ax.set_axisbelow(True)
 
@@ -122,7 +122,7 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
                             i,
                             reference_mineral_namemap.get(mineral, ""),
                             ha="center", va="center",
-                            fontsize=10, color="white", fontweight="bold"
+                            fontsize=9, color="white", fontweight="bold"
                         )
                     cumulative_left += width
 
@@ -130,11 +130,11 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
                 title="Mineral",
                 loc="upper left",
                 bbox_to_anchor=(1.01, 1),
-                fontsize=11,
-                title_fontsize=12
+                fontsize=10,
+                title_fontsize=11
             )
 
-        fig.suptitle(figure_title, fontsize=20, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
 
         filename = f"production_{scenario_clean}_{constraint}_by_year_subplots.png".replace(" ", "_")
@@ -238,11 +238,11 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
                 pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
                 
                 # Styling
-                ax.set_title(f"{scenario_name}", fontsize=18, fontweight="bold")
-                ax.set_ylabel("Country", fontsize=14)
+                ax.set_title(f"{scenario_name}", fontsize=14, fontweight="bold")
+                ax.set_ylabel("Country", fontsize=12)
                 if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
-                    ax.set_xlabel("Production (million tonnes)", fontsize=14)
-                ax.tick_params(labelsize=12)
+                    ax.set_xlabel("Production (million tonnes)", fontsize=12)
+                ax.tick_params(labelsize=11)
                 ax.grid(axis="x", linestyle="--", alpha=0.6)
                 ax.set_axisbelow(True)
                 
@@ -257,7 +257,7 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
                                 j,
                                 reference_mineral_namemap.get(mineral, ""),
                                 ha="center", va="center",
-                                fontsize=10, color="white", fontweight="bold"
+                                fontsize=9, color="white", fontweight="bold"
                             )
                         cumulative_left += width
                 
@@ -267,14 +267,14 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
                         title="Mineral",
                         loc="upper left", 
                         bbox_to_anchor=(1.01, 1),
-                        fontsize=11,
-                        title_fontsize=12
+                        fontsize=10,
+                        title_fontsize=11
                     )
                 else:
                     ax.legend().set_visible(False)
             
         # Overall figure styling
-        fig.suptitle(figure_title, fontsize=20, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
         
         # Save figure
