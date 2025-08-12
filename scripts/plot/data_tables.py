@@ -134,9 +134,15 @@ def create_value_added_by_mineral(df, to_kt=False):
     if to_kt:
         df_filtered["production_tonnes"] = df_filtered["production_tonnes"] / 1e3
 
+    # Import route-based calculation
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
+    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    
     df_va = df_filtered.groupby(
         ['scenario', 'constraint', 'iso3', 'reference_mineral']
-    ).apply(calc_value_added).reset_index(drop=True)
+    ).apply(calc_value_added_with_routes).reset_index(drop=True)
 
     df_va['value_added_musd'] = df_va['value_added'] / 1e6
 
@@ -292,11 +298,11 @@ def calc_value_added(group):
     for i in range(1, len(group)):
         prev = group.iloc[i - 1]
         curr = group.iloc[i]
-        # Use production_tonnes_for_costs exclusively for value addition calculations
-        if prev["production_tonnes_for_costs"] > 0:
+        # Use production_tonnes for value addition calculations (total domestic economic impact)
+        if prev["production_tonnes"] > 0:
             group.at[curr.name, "value_added"] = (
-                (curr["price_usd_per_tonne"] * curr["production_tonnes_for_costs"]) -
-                (prev["production_cost_usd_per_tonne"] * prev["production_tonnes_for_costs"])
+                (curr["price_usd_per_tonne"] * curr["production_tonnes"]) -
+                (prev["production_cost_usd_per_tonne"] * prev["production_tonnes"])
             )
     return group
 
@@ -305,13 +311,19 @@ def create_value_added_totals_legacy(df, to_kt=False):
     df = df[df["processing_stage"] > 0].copy()
 
     if to_kt:
-        df["production_tonnes_for_costs"] = df["production_tonnes_for_costs"] / 1e3
+        df["production_tonnes"] = df["production_tonnes"] / 1e3
 
     df["value_added"] = 0.0
 
-    # Apply stage-wise value addition logic
+    # Import route-based calculation
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
+    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    
+    # Apply stage-wise value addition logic using route-based calculation
     df = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]) \
-           .apply(calc_value_added).reset_index(drop=True)
+           .apply(calc_value_added_with_routes).reset_index(drop=True)
 
     # Convert to million USD
     df["value_added_musd"] = df["value_added"] / 1e6
@@ -337,13 +349,19 @@ def create_value_added_tables(df, to_kt=False):
     df = df[df["processing_stage"] > 0].copy()
 
     # Handle unit conversion for production if needed
-    df['production_tonnes_for_costs'] = df['production_tonnes_for_costs'] / (1e3 if to_kt else 1)
+    df['production_tonnes'] = df['production_tonnes'] / (1e3 if to_kt else 1)
     df['value_added'] = 0.0
 
-    # Apply value added logic per group
+    # Import route-based calculation
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
+    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    
+    # Apply value added logic per group using route-based calculation
     df = df.groupby(
         ['scenario', 'constraint', 'iso3', 'reference_mineral']
-    ).apply(calc_value_added).reset_index(drop=True)
+    ).apply(calc_value_added_with_routes).reset_index(drop=True)
 
     # Convert to million USD
     df['value_added_musd'] = df['value_added'] / 1e6
@@ -432,14 +450,14 @@ def create_normalized_revenue_table_by_stage_and_type(df, to_kt=False):
 
 def create_normalized_value_added_table_by_stage_and_type(df, to_kt=False):
     df = df.copy()
-    # Filter for processing stages > 0 AND production_tonnes_for_costs > 0 (economically viable production)
-    df = df[(df["processing_stage"] > 0) & (df["production_tonnes_for_costs"] > 0)]
+    # Filter for processing stages > 0 AND production_tonnes > 0 (total domestic production)
+    df = df[(df["processing_stage"] > 0) & (df["production_tonnes"] > 0)]
 
     if "value_added" not in df.columns:
-        # CORRECTED: Use production_tonnes_for_costs for value added calculation
+        # Calculate value added using production_tonnes (total domestic production)
         df["value_added"] = (
-            df["price_usd_per_tonne"] * df["production_tonnes_for_costs"]
-            - df["production_cost_usd_per_tonne"] * df["production_tonnes_for_costs"]
+            df["price_usd_per_tonne"] * df["production_tonnes"]
+            - df["production_cost_usd_per_tonne"] * df["production_tonnes"]
         )
 
     group_cols = [
@@ -448,16 +466,16 @@ def create_normalized_value_added_table_by_stage_and_type(df, to_kt=False):
 
     grouped = df.groupby(group_cols).agg({
         "value_added": "sum",
-        "production_tonnes_for_costs": "sum"  # CORRECTED: Use production_tonnes_for_costs
+        "production_tonnes": "sum"  # Use production_tonnes for normalization
     }).reset_index()
 
-    # CORRECTED: Normalize by economically viable production, not total production capacity
-    grouped["norm_value_added"] = grouped["value_added"] / grouped["production_tonnes_for_costs"]
+    # Normalize by total domestic production (value added per tonne of total production)
+    grouped["norm_value_added"] = grouped["value_added"] / grouped["production_tonnes"]
 
-    # CORRECTED: Use production-weighted aggregation instead of simple mean
+    # Production-weighted aggregation
     # Group by processing_type (not stage) and calculate weighted average across stages
     final_grouped = grouped.groupby(["processing_type", "scenario", "constraint", "reference_mineral"]).apply(
-        lambda x: (x["value_added"].sum() / x["production_tonnes_for_costs"].sum()) if x["production_tonnes_for_costs"].sum() > 0 else 0
+        lambda x: (x["value_added"].sum() / x["production_tonnes"].sum()) if x["production_tonnes"].sum() > 0 else 0
     ).reset_index(name="norm_value_added_weighted")
 
     pivot = final_grouped.pivot_table(
@@ -792,25 +810,27 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
         # TODO: Restore when energy results are ready
         # create_energy_capacity_by_mineral(df).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
         create_water_use_by_mineral(df).to_excel(writer, sheet_name="water_use_million_m3", index=False)
+        create_value_added_by_mineral(df).to_excel(writer, sheet_name="value_added_million_usd", index=False)
         create_production_table(df, to_kt=False).to_excel(writer, sheet_name="production_Mt", index=False)
         create_production_by_type_table(df, to_kt=False).to_excel(writer, sheet_name="production_by_type_Mt", index=False)
 
         rev_summary, rev_by_type = create_revenue_tables(df, to_kt=False)
+        val_add_summary, val_add_by_type = create_value_added_tables(df, to_kt=False)
         rev_summary.to_excel(writer, sheet_name="revenue_summary_million_usd", index=False)
         rev_by_type.to_excel(writer, sheet_name="revenue_by_type_million_usd", index=False)
+        val_add_summary.to_excel(writer, sheet_name="value_added_summary_million_usd", index=False)
+        val_add_by_type.to_excel(writer, sheet_name="value_added_by_type_million_usd", index=False)
 
         # Normalized revenue and value addition by stage and type
         norm_rev = create_normalized_revenue_table_by_stage_and_type(df)
-        # norm_val_add = create_normalized_value_added_table_by_stage_and_type(df)
+        norm_val_add = create_normalized_value_added_table_by_stage_and_type(df)
 
         norm_rev.to_excel(writer, sheet_name="norm_revenue_by_type_usdpt", index=False)
+        norm_val_add.to_excel(writer, sheet_name="norm_value_added_by_type_usdpt", index=False)
         
         # Normalized revenue summary
         norm_summary = create_normalized_revenue_summary(df)
         norm_summary.to_excel(writer, sheet_name="norm_revenue_summary_usdpt", index=False)
-
-        
-        # norm_val_add.to_excel(writer, sheet_name="normalized_valadded_by_type_usdpt", index=False)
 
 
         # Add long-format summary table
@@ -836,23 +856,26 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
                 # TODO: Restore when energy results are ready
                 # create_energy_capacity_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
                 create_water_use_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="water_use_mcm", index=False)
+                create_value_added_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="value_added_musd", index=False)
                 create_production_table(df_country, to_kt=True).to_excel(writer, sheet_name="production_kt", index=False)
                 create_production_by_type_table(df_country, to_kt=True).to_excel(writer, sheet_name="production_by_type_kt", index=False)
 
                 rev_summary, rev_by_type = create_revenue_tables(df_country, to_kt=True)
+                val_add_summary, val_add_by_type = create_value_added_tables(df_country, to_kt=True)
                 rev_summary.to_excel(writer, sheet_name="revenue_summary_musd", index=False)
                 rev_by_type.to_excel(writer, sheet_name="revenue_by_type_musd", index=False)
+                val_add_summary.to_excel(writer, sheet_name="value_added_summary_musd", index=False)
+                val_add_by_type.to_excel(writer, sheet_name="value_added_by_type_musd", index=False)
 
                 # Normalized revenue and value addition by stage and type
                 norm_rev = create_normalized_revenue_table_by_stage_and_type(df_country)
-                # norm_val_add = create_normalized_value_added_table_by_stage_and_type(df_country)
+                norm_val_add = create_normalized_value_added_table_by_stage_and_type(df_country)
 
                 norm_rev.to_excel(writer, sheet_name="norm_revenue_by_type_usdpt", index=False)
+                norm_val_add.to_excel(writer, sheet_name="norm_value_added_by_type_usdpt", index=False)
 
                 norm_summary = create_normalized_revenue_summary(df_country)
                 norm_summary.to_excel(writer, sheet_name="norm_revenue_summary_usdpt", index=False)
-
-                # norm_val_add.to_excel(writer, sheet_name="normalized_valadded_by_type_usdpt", index=False)
 
                 # Add long-format summary for country
                 summary_df = create_summary_mid_demand_unconstrained(df_country)

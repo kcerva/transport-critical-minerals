@@ -208,6 +208,68 @@ allowed_mineral_processing = {
     }
 }
 
+# Mineral-specific processing routes for value addition calculation
+MINERAL_PROCESSING_ROUTES = {
+    # High Priority - Complex Routes
+    'copper': {
+        'valid_routes': [
+            [1.0, 2.0, 3.0, 4.3, 5.0],  # Main route: Beneficiation → Early → Early → Precursor → Precursor
+            [1.0, 3.0, 5.0],            # Alternative: Beneficiation → Early → Precursor
+            [1.0, 3.0, 4.3, 5.0]        # Additional route: Beneficiation → Early → Precursor → Precursor
+        ],
+        'invalid_routes': [
+            [1.0, 5.0]                   # Direct route - should be flagged as invalid
+        ],
+        'flag_message': 'Direct Beneficiation→Precursor route detected - should not exist'
+    },
+    
+    'cobalt': {
+        'valid_routes': [
+            [1.0, 3.0],                  # Beneficiation → Early (terminal - no further processing)
+            [1.0, 4.1, 5.0],            # Beneficiation → Early → Precursor  
+            [4.1, 5.0]                  # Early → Precursor (disconnected - starts from imported/processed cobalt)
+        ],
+        'invalid_routes': [],
+        'flag_message': None
+    },
+    
+    'nickel': {
+        'valid_routes': [
+            [1.0, 2.0, 3.0, 5.0],       # Ideal route: Beneficiation → Early → Early → Precursor
+            [1.0, 3.0, 5.0]             # Alternative: Beneficiation → Early → Precursor (acceptable)
+        ],
+        'invalid_routes': [],
+        'flag_message': None
+    },
+    
+    # Medium Priority - Some Variation  
+    'lithium': {
+        'valid_routes': [
+            [1.0, 3.0, 4.2],            # Ideal route: Beneficiation → Early → Precursor
+            [1.0, 4.2]                  # Alternative: Beneficiation → Precursor (acceptable if occurs)
+        ],
+        'invalid_routes': [],
+        'flag_message': None
+    },
+    
+    'graphite': {
+        'valid_routes': [
+            [1.0, 3.0, 4.0]             # Standard route: Beneficiation → Early → Precursor
+        ],
+        'invalid_routes': [],
+        'flag_message': None
+    },
+    
+    # Low Priority - Consistent (keeping existing behavior for now)
+    'manganese': {
+        'valid_routes': [
+            [1.0, 3.1, 4.1]             # Standard route: Beneficiation → Early → Precursor
+        ],
+        'invalid_routes': [],
+        'flag_message': None
+    }
+}
+
 # Helper functions for using the new configuration
 def get_target_stage_for_goal(mineral, goal_type):
     """
@@ -259,4 +321,73 @@ def get_goal_from_scenario(scenario):
         return "baseline"
     else:
         return "unknown"
+
+def get_mineral_processing_routes(mineral):
+    """Get valid processing routes for a mineral"""
+    if mineral in MINERAL_PROCESSING_ROUTES:
+        return MINERAL_PROCESSING_ROUTES[mineral]['valid_routes']
+    return []
+
+def get_invalid_mineral_routes(mineral):
+    """Get invalid processing routes for a mineral (for flagging)"""
+    if mineral in MINERAL_PROCESSING_ROUTES:
+        return MINERAL_PROCESSING_ROUTES[mineral]['invalid_routes']
+    return []
+
+def get_route_flag_message(mineral):
+    """Get flag message for invalid routes"""
+    if mineral in MINERAL_PROCESSING_ROUTES:
+        return MINERAL_PROCESSING_ROUTES[mineral]['flag_message']
+    return None
+
+def find_matching_route(country_stages, valid_routes):
+    """
+    Find which valid route best matches the country's processing stages
+    
+    Args:
+        country_stages (list): List of processing stages present in country
+        valid_routes (list): List of valid route sequences
+    
+    Returns:
+        list: Best matching route, or None if no match
+    """
+    country_stages_set = set(country_stages)
+    
+    best_match = None
+    best_match_score = 0
+    
+    for route in valid_routes:
+        # Check how many stages in the route are present in country data
+        route_stages_in_country = [stage for stage in route if stage in country_stages_set]
+        
+        # Route is valid if we have all stages in sequence that exist in country
+        if len(route_stages_in_country) >= 2:  # Need at least 2 stages for value addition
+            # Score = number of matching stages / total route length (prefer complete routes)
+            score = len(route_stages_in_country) / len(route)
+            if score > best_match_score:
+                best_match = route
+                best_match_score = score
+    
+    return best_match
+
+def validate_route_sequence(country_stages, invalid_routes):
+    """
+    Check if country follows ONLY invalid processing routes (strict interpretation)
+    
+    Args:
+        country_stages (list): List of processing stages present in country
+        invalid_routes (list): List of invalid route sequences to check
+    
+    Returns:
+        tuple: (is_invalid, invalid_route_found)
+    """
+    country_stages_set = set(country_stages)
+    
+    for invalid_route in invalid_routes:
+        # Check if country has EXACTLY the invalid route stages and no others
+        # This means they're following the direct invalid pathway
+        if set(invalid_route) == country_stages_set:
+            return True, invalid_route
+    
+    return False, None
 

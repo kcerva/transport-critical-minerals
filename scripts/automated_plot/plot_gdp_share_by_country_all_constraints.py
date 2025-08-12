@@ -107,7 +107,7 @@ def plot_gdp_share_by_country_all_constraints(df, output_dir, value_column, titl
             annotate_bar_labels(ax, pivot, orientation="horizontal")
             format_legend(ax, title="Mineral")
 
-        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
 
         filename = f"{title_prefix.lower().replace(' ', '_')}_{scenario_clean}_{constraint}_by_year_subplots.png".replace(" ", "_")
@@ -125,24 +125,20 @@ def adjust_gdp_for_inflation(df):
     return df
     
 def compute_value_addition_share(df):
+    # Import route-based calculation function
+    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    
     df = adjust_gdp_for_inflation(df.copy())
     df = df[df["processing_stage"] > 0]
     df = df[df["gdp_usd"] > 0]  # Filter out zero GDP values
     df = df.sort_values(by=["iso3", "reference_mineral", "scenario", "processing_stage"])
     df["value_added"] = 0.0
 
-    def calc_value_added(group):
-        for i in range(1, len(group)):
-            prev = group.iloc[i - 1]
-            curr = group.iloc[i]
-            if prev["production_tonnes"] > 0:
-                group.at[curr.name, "value_added"] = (
-                    (curr["price_usd_per_tonne"] * curr["production_tonnes"]) -
-                    (prev["production_cost_usd_per_tonne"] * prev["production_tonnes"])
-                )
-        return group
-
-    df = df.groupby(["iso3", "reference_mineral", "scenario"]).apply(calc_value_added).reset_index(drop=True)
+    # Apply route-based value addition calculation
+    df = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]).apply(
+        calc_value_added_with_routes
+    ).reset_index(drop=True)
+    
     df["value"] = df["value_added"] / df["gdp_usd"] * 100
     df["variable"] = "value_addition"
     df.rename(columns={"iso3": "country"}, inplace=True)
@@ -206,8 +202,30 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
         if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
             continue
         
+        # First pass: find maximum x-value across all scenarios for consistent scaling
+        max_x_value = 0
+        for scenario_key, scenario_name in scenario_mapping.items():
+            if scenario_key in [s[0] for s in available_scenarios]:
+                scenario_data_temp = scenario_data[scenario_key]
+                
+                # Handle both 'country' and 'iso3' column names
+                country_col = 'country' if 'country' in scenario_data_temp.columns else 'iso3'
+                mineral_col = 'reference_mineral_short' if 'reference_mineral_short' in scenario_data_temp.columns else 'reference_mineral'
+                
+                temp_grouped = scenario_data_temp.groupby([country_col, mineral_col])[value_column].sum().reset_index()
+                temp_pivot = temp_grouped.pivot_table(
+                    index=country_col,
+                    columns=mineral_col,
+                    values=value_column,
+                    fill_value=0
+                )
+                
+                if not temp_pivot.empty:
+                    scenario_max = temp_pivot.sum(axis=1).max()
+                    max_x_value = max(max_x_value, scenario_max)
+        
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=True)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
@@ -241,13 +259,17 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
                 pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
                 
                 # Styling
-                ax.set_title(f"{scenario_name}", fontsize=14, fontweight="bold")
-                ax.set_ylabel("Country", fontsize=12)
+                ax.set_title(f"{scenario_name}", fontsize=16, fontweight="bold")
+                ax.set_ylabel("Country", fontsize=14)
                 if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
-                    ax.set_xlabel(f"{ylabel}", fontsize=12)
-                ax.tick_params(labelsize=11)
+                    ax.set_xlabel(f"{ylabel}", fontsize=14)
+                ax.tick_params(labelsize=12)
                 ax.grid(axis="x", linestyle="--", alpha=0.6)
                 ax.set_axisbelow(True)
+                
+                # Set consistent x-axis limits across all subplots
+                if max_x_value > 0:
+                    ax.set_xlim(0, max_x_value)
                 
                 # Add mineral labels on bars (abbreviated for space)
                 for j, country in enumerate(pivot.index):
@@ -270,14 +292,14 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
                         title="Mineral",
                         loc="upper left",
                         bbox_to_anchor=(1.01, 1),
-                        fontsize=10,
-                        title_fontsize=11
+                        fontsize=11,
+                        title_fontsize=12
                     )
                 else:
                     ax.legend().set_visible(False)
         
         # Overall figure styling
-        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
         
         # Save figure
