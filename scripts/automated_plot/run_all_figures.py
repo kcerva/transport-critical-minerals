@@ -34,6 +34,7 @@ from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
 from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
 from plot_supply_curves import create_supply_curves
+from plot_production_differences import generate_essential_difference_plots
 
 def run_plot_production(df, output_dir, config):
     # Updated for new scenario structure - goals are determined by scenario name, not year
@@ -220,6 +221,15 @@ def run_supply_curves(df, output_dir, config):
     saved_paths = create_supply_curves(df, supply_curve_dir)
     print(f"Supply curve plots completed. Generated {len(saved_paths)} plots in: {supply_curve_dir}")
 
+def run_production_differences(df, output_dir, config):
+    """Generate production difference plots (Regional vs National)"""
+    production_diff_dir = os.path.join(output_dir, 'production_differences')
+    os.makedirs(production_diff_dir, exist_ok=True)
+    
+    print("Generating production difference plots...")
+    generate_essential_difference_plots(production_diff_dir)
+    print(f"Production difference plots completed. Saved to: {production_diff_dir}")
+
 AVAILABLE_PLOTS = {
     "revenue_gdp_share": run_plot_revenue,
     "value_addition_gdp_share": run_plot_value_addition,
@@ -231,20 +241,22 @@ AVAILABLE_PLOTS = {
     "all_country_comparisons": run_all_country_comparisons,
     "goal_comparisons_all_countries": run_goal_comparisons_all_countries,
     "country_docx_reports": run_country_docx_reports,
-    "supply_curves": run_supply_curves
+    "supply_curves": run_supply_curves,
+    "production_differences": run_production_differences
 }
 
 PLOT_GROUPS = {
     "all_countries": [
         "production_all_countries", "emissions_all_countries", "water_all_countries",
         "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons",
-        "goal_comparisons_all_countries", "supply_curves"
+        "goal_comparisons_all_countries", "supply_curves", "production_differences"
     ],
     "single_countries": ["single_country_all", "country_differences"],
     "core": ["production_all_countries", "emissions_all_countries", "goal_comparisons_all_countries"],
     "reports": ["country_docx_reports"],
     "goal_analysis": ["goal_comparisons_all_countries"],
-    "supply_analysis": ["supply_curves"]
+    "supply_analysis": ["supply_curves"],
+    "difference_analysis": ["production_differences"]
 }
 
 def run_selected_plots(selected=None, group=None):
