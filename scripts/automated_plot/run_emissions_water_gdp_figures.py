@@ -125,5 +125,38 @@ try:
 except Exception as e:
     print(f"✗ Error generating production scenario comparison subplots: {e}")
 
+# Generate Processing-focused production subplots
+print("\n=== Generating Processing-Focused Production Subplots ===")
+try:
+    from plot_production_by_country_all_constraints import plot_production_processing_focus_subplots
+    
+    processing_subplot_files = plot_production_processing_focus_subplots(df, output_base)
+    print(f"✓ Generated {len(processing_subplot_files) if processing_subplot_files else 0} processing-focused production subplots")
+    
+except Exception as e:
+    print(f"✗ Error generating processing-focused production subplots: {e}")
+
+# Generate Value Addition scenario comparison subplots  
+print("\n=== Generating Value Addition Scenario Comparison Subplots ===")
+try:
+    from plot_emissions_water_all_countries import plot_value_addition_scenario_comparison_subplots
+    
+    value_addition_subplot_files = plot_value_addition_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(value_addition_subplot_files) if value_addition_subplot_files else 0} value addition scenario comparison subplots")
+    
+except Exception as e:
+    print(f"✗ Error generating value addition scenario comparison subplots: {e}")
+
+# Generate Value Addition GDP Share scenario comparison subplots
+print("\n=== Generating Value Addition GDP Share Scenario Comparison Subplots ===")
+try:
+    from plot_emissions_water_all_countries import plot_value_addition_gdp_share_scenario_comparison_subplots
+    
+    value_addition_gdp_subplot_files = plot_value_addition_gdp_share_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(value_addition_gdp_subplot_files) if value_addition_gdp_subplot_files else 0} value addition GDP share scenario comparison subplots")
+    
+except Exception as e:
+    print(f"✗ Error generating value addition GDP share scenario comparison subplots: {e}")
+
 print("\n✅ Figure generation complete!")
 print(f"Output directory: {output_base}")
