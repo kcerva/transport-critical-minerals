@@ -7,6 +7,7 @@ import sys
 # Add the automated_plot directory to the path to import plot_config
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
 from plot_config import get_target_stage_for_goal, mineral_processing_stages
+from plot_emissions_water_all_countries import calc_value_added_simple
 
 # Define the policy pair mapping: country -> region
 POLICY_MATCHES = {
@@ -138,15 +139,54 @@ def create_value_added_by_mineral(df, to_kt=False):
     import sys
     import os
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
-    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    from plot_emissions_water_all_countries import calc_value_added_with_routes, calc_value_added_simple
     
+    # Route-based value addition calculation
     df_va = df_filtered.groupby(
         ['scenario', 'constraint', 'iso3', 'reference_mineral']
     ).apply(calc_value_added_with_routes).reset_index(drop=True)
 
     df_va['value_added_musd'] = df_va['value_added'] / 1e6
 
+    # Simple value addition calculation
+    df_va_simple = df_filtered.groupby(
+        ['scenario', 'constraint', 'iso3', 'reference_mineral']
+    ).apply(calc_value_added_simple).reset_index(drop=True)
+
+    df_va_simple['value_added_simple_musd'] = df_va_simple['value_added_simple'] / 1e6
+
+    # Merge both calculations
+    df_va = df_va.merge(
+        df_va_simple[['scenario', 'constraint', 'iso3', 'reference_mineral', 'processing_stage', 'value_added_simple', 'value_added_simple_musd']],
+        on=['scenario', 'constraint', 'iso3', 'reference_mineral', 'processing_stage'],
+        how='outer'
+    )
+
+    # Return route-based value addition (keeping existing behavior)
     return create_pivot_with_pct_change(df_va, 'value_added', 'value_added_musd', conversion_factor=1e6, to_kt=to_kt)
+
+def create_value_added_simple_by_mineral(df, to_kt=False):
+    # Don't filter out stage 0 - the calc_value_added_simple function needs all stages
+    df_copy = df.copy()
+    if to_kt:
+        df_copy["production_tonnes"] = df_copy["production_tonnes"] / 1e3
+
+    # Import simple value addition calculation
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
+    from plot_emissions_water_all_countries import calc_value_added_simple
+    
+    # Simple value addition calculation - use full dataset
+    df_va_simple = df_copy.groupby(
+        ['scenario', 'constraint', 'iso3', 'reference_mineral']
+    ).apply(calc_value_added_simple).reset_index(drop=True)
+
+    # Filter to only non-stage-0 results for the pivot (since stage 0 has no value addition)
+    df_filtered = df_va_simple[df_va_simple["processing_stage"] > 0].copy()
+    df_filtered['value_added_simple_musd'] = df_filtered['value_added_simple'] / 1e6
+
+    return create_pivot_with_pct_change(df_filtered, 'value_added_simple', 'value_added_simple_musd', conversion_factor=1e6, to_kt=to_kt)
 
 def create_transport_emissions_by_mineral(df, to_kt=False):
     return create_pivot_with_pct_change(df, 'transport_total_tonsCO2eq', 'transport_emissions_MtCO2e', conversion_factor=1e6, to_kt=to_kt)
@@ -319,14 +359,26 @@ def create_value_added_totals_legacy(df, to_kt=False):
     import sys
     import os
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
-    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    from plot_emissions_water_all_countries import calc_value_added_with_routes, calc_value_added_simple
     
-    # Apply stage-wise value addition logic using route-based calculation
-    df = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]) \
+    # Apply route-based value addition calculation
+    df_route = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]) \
            .apply(calc_value_added_with_routes).reset_index(drop=True)
+
+    # Apply simple value addition calculation
+    df_simple = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]) \
+           .apply(calc_value_added_simple).reset_index(drop=True)
+
+    # Merge both calculations
+    df = df_route.merge(
+        df_simple[['scenario', 'constraint', 'iso3', 'reference_mineral', 'processing_stage', 'value_added_simple']],
+        on=['scenario', 'constraint', 'iso3', 'reference_mineral', 'processing_stage'],
+        how='outer'
+    )
 
     # Convert to million USD
     df["value_added_musd"] = df["value_added"] / 1e6
+    df["value_added_simple_musd"] = df["value_added_simple"] / 1e6
 
     # Aggregate total value added per scenario + constraint
     summary = df.groupby(["scenario", "constraint"])["value_added_musd"].sum().reset_index()
@@ -356,15 +408,28 @@ def create_value_added_tables(df, to_kt=False):
     import sys
     import os
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'automated_plot'))
-    from plot_emissions_water_all_countries import calc_value_added_with_routes
+    from plot_emissions_water_all_countries import calc_value_added_with_routes, calc_value_added_simple
     
-    # Apply value added logic per group using route-based calculation
-    df = df.groupby(
+    # Apply route-based value addition calculation
+    df_route = df.groupby(
         ['scenario', 'constraint', 'iso3', 'reference_mineral']
     ).apply(calc_value_added_with_routes).reset_index(drop=True)
 
+    # Apply simple value addition calculation  
+    df_simple = df.groupby(
+        ['scenario', 'constraint', 'iso3', 'reference_mineral']
+    ).apply(calc_value_added_simple).reset_index(drop=True)
+
+    # Merge both calculations
+    df = df_route.merge(
+        df_simple[['scenario', 'constraint', 'iso3', 'reference_mineral', 'processing_stage', 'value_added_simple']],
+        on=['scenario', 'constraint', 'iso3', 'reference_mineral', 'processing_stage'],
+        how='outer'
+    )
+
     # Convert to million USD
     df['value_added_musd'] = df['value_added'] / 1e6
+    df['value_added_simple_musd'] = df['value_added_simple'] / 1e6
 
     # Create main summary: total value added per scenario + constraint
     pivot = df.pivot_table(
@@ -514,6 +579,9 @@ def create_summary_mid_demand_unconstrained(df):
     Create summary table with 2040 scenario comparisons between country and regional constraints
     Now handles BAU, Early Processing, and Product Manufacturing scenarios
     """
+    # Ensure simple value addition is calculated - must be applied per group
+    if 'value_added_simple' not in df.columns:
+        df = df.groupby(['scenario', 'constraint', 'iso3', 'reference_mineral']).apply(calc_value_added_simple).reset_index(drop=True)
     # Define the 2040 scenarios we want to compare
     scenario_2040_patterns = ['bau_2040', 'early_refining_2040', 'precursor_2040']
     
@@ -622,6 +690,18 @@ def create_summary_mid_demand_unconstrained(df):
                     stage_0_revenue = mineral_stage_0['revenue_usd'].sum() / 1e6 if not mineral_stage_0.empty else 0
                     value_addition_musd += (target_revenue - stage_0_revenue)
             
+            # VALUE ADDITION SIMPLE: Stage revenue - Stage 1 costs
+            value_addition_simple_musd = 0
+            if 'value_added_simple' in constraint_data.columns:
+                value_addition_simple_musd = constraint_data['value_added_simple'].sum() / 1e6
+            else:
+                # Calculate simple value addition if not already in data
+                stage_1_data = constraint_data[constraint_data['processing_stage'] == 1.0]
+                if not stage_1_data.empty:
+                    stage_1_costs_musd = (stage_1_data['production_tonnes'] * stage_1_data['production_cost_usd_per_tonne']).sum() / 1e6
+                    stage_revenue_musd = (constraint_data['production_tonnes_for_costs'] * constraint_data['price_usd_per_tonne']).sum() / 1e6
+                    value_addition_simple_musd = stage_revenue_musd - stage_1_costs_musd
+            
             # Water, energy, transport and emissions
             water_mcm = constraint_data['water_usage_m3'].sum() / 1e6
             transport_co2_kt = constraint_data['transport_total_tonsCO2eq'].sum() / 1e3
@@ -643,6 +723,7 @@ def create_summary_mid_demand_unconstrained(df):
                 'total_cost_MUSD': round(total_cost_musd, 2),
                 'total_revenue_MUSD': round(total_revenue_musd, 2),
                 'value_addition_MUSD': round(value_addition_musd, 2),
+                'value_addition_simple_MUSD': round(value_addition_simple_musd, 2),
                 'water_use_MCM': round(water_mcm, 2),
                 'transport_volume_Mtkm': round(transport_volume_mtkm, 2),
                 'energy_capacity_GW': round(energy_capacity_gw, 2),
@@ -696,6 +777,9 @@ def create_summary_mid_demand_unconstrained(df):
                 'value_addition_MUSD_country': country_val['value_addition_MUSD'],
                 'value_addition_MUSD_region': region_val['value_addition_MUSD'],
                 'value_addition_pct_change': round(((region_val['value_addition_MUSD'] / country_val['value_addition_MUSD']) * 100 - 100) if country_val['value_addition_MUSD'] > 0 else 0, 2),
+                'value_addition_simple_MUSD_country': country_val['value_addition_simple_MUSD'],
+                'value_addition_simple_MUSD_region': region_val['value_addition_simple_MUSD'],
+                'value_addition_simple_pct_change': round(((region_val['value_addition_simple_MUSD'] / country_val['value_addition_simple_MUSD']) * 100 - 100) if country_val['value_addition_simple_MUSD'] != 0 else 0, 2),
                 'water_MCM_country': country_val['water_use_MCM'],
                 'water_MCM_region': region_val['water_use_MCM'],
                 'water_pct_change': round(((region_val['water_use_MCM'] / country_val['water_use_MCM']) * 100 - 100) if country_val['water_use_MCM'] > 0 else 0, 2),
@@ -737,6 +821,9 @@ def create_summary_mid_demand_unconstrained(df):
                 'value_addition_MUSD_country': country_val['value_addition_MUSD'],
                 'value_addition_MUSD_region': region_val['value_addition_MUSD'],
                 'value_addition_pct_change': round(((region_val['value_addition_MUSD'] / country_val['value_addition_MUSD']) * 100 - 100) if country_val['value_addition_MUSD'] > 0 else 0, 2),
+                'value_addition_simple_MUSD_country': country_val['value_addition_simple_MUSD'],
+                'value_addition_simple_MUSD_region': region_val['value_addition_simple_MUSD'],
+                'value_addition_simple_pct_change': round(((region_val['value_addition_simple_MUSD'] / country_val['value_addition_simple_MUSD']) * 100 - 100) if country_val['value_addition_simple_MUSD'] != 0 else 0, 2),
                 'water_MCM_country': country_val['water_use_MCM'],
                 'water_MCM_region': region_val['water_use_MCM'],
                 'water_pct_change': round(((region_val['water_use_MCM'] / country_val['water_use_MCM']) * 100 - 100) if country_val['water_use_MCM'] > 0 else 0, 2),
@@ -769,6 +856,7 @@ def create_summary_mid_demand_unconstrained(df):
                 ('Production_Metal_Content_Mt', row['production_metal_content_Mt_country'], row['production_metal_content_Mt_region'], row['production_metal_content_pct_change']),
                 ('Production_Products_Mt', row['production_products_Mt_country'], row['production_products_Mt_region'], row['production_products_pct_change']),
                 ('Value_Addition_Million_USD', row['value_addition_MUSD_country'], row['value_addition_MUSD_region'], row['value_addition_pct_change']),
+                ('Value_Addition_Simple_Million_USD', row['value_addition_simple_MUSD_country'], row['value_addition_simple_MUSD_region'], row['value_addition_simple_pct_change']),
                 ('Transport_Volume_Million_tonkm', row['transport_volume_Mtkm_country'], row['transport_volume_Mtkm_region'], row['transport_volume_pct_change']),
                 ('cost_MUSD', row['cost_MUSD_country'], row['cost_MUSD_region'], row['cost_pct_change']),
                 ('revenue_MUSD', row['revenue_MUSD_country'], row['revenue_MUSD_region'], row['revenue_pct_change']),
@@ -811,6 +899,7 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
         # create_energy_capacity_by_mineral(df).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
         create_water_use_by_mineral(df).to_excel(writer, sheet_name="water_use_million_m3", index=False)
         create_value_added_by_mineral(df).to_excel(writer, sheet_name="value_added_million_usd", index=False)
+        create_value_added_simple_by_mineral(df).to_excel(writer, sheet_name="value_added_simple_million_usd", index=False)
         create_production_table(df, to_kt=False).to_excel(writer, sheet_name="production_Mt", index=False)
         create_production_by_type_table(df, to_kt=False).to_excel(writer, sheet_name="production_by_type_Mt", index=False)
 

@@ -158,5 +158,27 @@ try:
 except Exception as e:
     print(f"✗ Error generating value addition GDP share scenario comparison subplots: {e}")
 
+# Generate Value Addition Simple scenario comparison subplots
+print("\n=== Generating Value Addition Simple Scenario Comparison Subplots ===")
+try:
+    from plot_emissions_water_all_countries import plot_value_addition_simple_scenario_comparison_subplots
+    
+    value_addition_simple_subplot_files = plot_value_addition_simple_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(value_addition_simple_subplot_files) if value_addition_simple_subplot_files else 0} value addition simple scenario comparison subplots")
+    
+except Exception as e:
+    print(f"✗ Error generating value addition simple scenario comparison subplots: {e}")
+
+# Generate Value Addition Simple GDP Share scenario comparison subplots
+print("\n=== Generating Value Addition Simple GDP Share Scenario Comparison Subplots ===")
+try:
+    from plot_emissions_water_all_countries import plot_value_addition_simple_gdp_share_scenario_comparison_subplots
+    
+    value_addition_simple_gdp_subplot_files = plot_value_addition_simple_gdp_share_scenario_comparison_subplots(df, output_base)
+    print(f"✓ Generated {len(value_addition_simple_gdp_subplot_files) if value_addition_simple_gdp_subplot_files else 0} value addition simple GDP share scenario comparison subplots")
+    
+except Exception as e:
+    print(f"✗ Error generating value addition simple GDP share scenario comparison subplots: {e}")
+
 print("\n✅ Figure generation complete!")
 print(f"Output directory: {output_base}")

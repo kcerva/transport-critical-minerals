@@ -443,6 +443,40 @@ def calc_value_added_with_routes(group):
     
     return group
 
+def calc_value_added_simple(group):
+    """
+    Calculate simple value addition: Stage Revenue - Stage 1 Costs
+    
+    Formula: (production_tonnes_for_costs × price_usd_per_tonne) - (stage_1_production_tonnes × stage_1_production_cost_usd_per_tonne)
+    
+    Args:
+        group: DataFrame group for one country-mineral-scenario combination
+        
+    Returns:
+        DataFrame: Group with value_added_simple column calculated
+    """
+    group = group.sort_values(by='processing_stage').copy()
+    group["value_added_simple"] = 0.0
+    
+    if len(group) < 2:
+        return group  # Need at least 2 stages (including stage 1 as baseline)
+    
+    # Find stage 1 (beneficiation) row for baseline costs
+    stage_1_rows = group[group['processing_stage'] == 1.0]
+    if stage_1_rows.empty:
+        return group  # No stage 1 baseline available
+    
+    stage_1_row = stage_1_rows.iloc[0]
+    stage_1_costs = stage_1_row['production_tonnes'] * stage_1_row['production_cost_usd_per_tonne']
+    
+    # Calculate simple value addition for all stages > 0 (excluding stage 0 if present)
+    for idx, row in group.iterrows():
+        if row['processing_stage'] > 0:  # All processing stages except stage 0
+            stage_revenue = row['production_tonnes_for_costs'] * row['price_usd_per_tonne']
+            group.at[idx, 'value_added_simple'] = stage_revenue - stage_1_costs
+    
+    return group
+
 def plot_value_addition_scenario_comparison_subplots(df, output_dir):
     """Create proper scenario comparison subplots for value addition with 3 rows (BAU, Early Refining, Precursor)"""
     os.makedirs(output_dir, exist_ok=True)
@@ -778,3 +812,339 @@ def plot_value_addition_gdp_share_scenario_comparison_subplots(df, output_dir):
     
     return saved_paths
 
+def plot_value_addition_simple_scenario_comparison_subplots(df, output_dir):
+    """Create scenario comparison subplots for simple value addition with 3 rows (BAU, Early Refining, Precursor)"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    df = df.copy()
+    
+    # Filter for 2040 scenarios only and mid demand levels, processing stages > 0
+    df_filtered = df[
+        (df["processing_stage"] > 0) &
+        (df["scenario"].str.contains("2040")) &
+        (
+            ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+        )
+    ]
+    
+    if df_filtered.empty:
+        return []
+    
+    # Calculate simple value addition 
+    df_filtered = df_filtered.sort_values(by=["iso3", "reference_mineral", "scenario", "processing_stage"])
+    df_filtered["value_added_simple"] = 0.0
+    
+    df_filtered = df_filtered.groupby(["scenario", "constraint", "iso3", "reference_mineral"]).apply(
+        calc_value_added_simple
+    ).reset_index(drop=True)
+    
+    # Convert to million USD
+    df_filtered["value_added_simple_musd"] = df_filtered["value_added_simple"] / 1e6
+    
+    # Filter for non-zero value addition
+    df_filtered = df_filtered[df_filtered["value_added_simple_musd"] > 0]
+    
+    if df_filtered.empty:
+        return []
+    
+    # Define scenario mapping
+    scenario_mapping = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Processing',
+        'precursor_2040': 'Product Manufacturing'
+    }
+    
+    df_filtered = df_filtered.copy()
+    df_filtered["reference_mineral_short"] = df_filtered["reference_mineral"].map(reference_mineral_namemap)
+    
+    saved_paths = []
+    
+    # Group by constraint only to compare scenarios within each constraint
+    for constraint, constraint_group in df_filtered.groupby("constraint"):
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+        
+        # Get scenarios present in this constraint group
+        available_scenarios = []
+        scenario_data = {}
+        
+        for scenario_key, scenario_name in scenario_mapping.items():
+            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_filtered.empty:
+                available_scenarios.append((scenario_key, scenario_name))
+                scenario_data[scenario_key] = scenario_data_filtered
+        
+        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+            continue
+            
+        # First pass: find maximum x-value across all scenarios for consistent scaling
+        max_x_value = 0
+        for scenario_key, scenario_name in scenario_mapping.items():
+            if scenario_key in [s[0] for s in available_scenarios]:
+                scenario_data_temp = scenario_data[scenario_key]
+                temp_grouped = scenario_data_temp.groupby([
+                    "reference_mineral_short", "iso3"
+                ])["value_added_simple_musd"].sum().reset_index()
+                if not temp_grouped.empty:
+                    temp_pivot = temp_grouped.pivot_table(
+                        index="reference_mineral_short",
+                        columns="iso3",
+                        values="value_added_simple_musd",
+                        fill_value=0
+                    )
+                    if not temp_pivot.empty:
+                        row_totals = temp_pivot.sum(axis=1)
+                        if len(row_totals) > 0:
+                            max_x_value = max(max_x_value, row_totals.max())
+        
+        # Add 10% padding to max value for better visualization
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.1
+        
+        # Create subplot figure with one column, multiple rows
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        if len(available_scenarios) == 1:
+            axes = [axes]
+        
+        figure_title = f"Value Addition Simple Scenario Comparison — {constraint_type} {constraint_status}"
+        
+        for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
+            ax = axes[i]
+            group_data = scenario_data[scenario_key]
+            
+            # Aggregate by mineral and country 
+            grouped = group_data.groupby([
+                "reference_mineral_short", "iso3"
+            ])["value_added_simple_musd"].sum().reset_index()
+            
+            if not grouped.empty:
+                # Create pivot table for stacked bars
+                pivot = grouped.pivot_table(
+                    index="reference_mineral_short",
+                    columns="iso3", 
+                    values="value_added_simple_musd",
+                    fill_value=0
+                )
+                
+                # Sort by total value addition for consistent ordering
+                pivot["total"] = pivot.sum(axis=1)
+                pivot = pivot.sort_values(by="total", ascending=True).drop(columns="total")
+                
+                # Generate country color mapping
+                countries = list(pivot.columns)
+                country_colors = generate_country_colormap(countries)
+                colors = [country_colors.get(country, "#999999") for country in countries]
+                
+                # Create stacked horizontal bar chart
+                pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
+                
+                # Styling
+                ax.set_title(f"{scenario_name}", fontsize=16, fontweight="bold")
+                ax.set_ylabel("Mineral", fontsize=14)
+                if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
+                    ax.set_xlabel("Value Addition Simple (million USD)", fontsize=14)
+                ax.tick_params(labelsize=12)
+                ax.grid(axis="x", linestyle="--", alpha=0.6)
+                ax.set_axisbelow(True)
+                
+                # Set consistent x-axis limits across all subplots
+                if max_x_value > 0:
+                    ax.set_xlim(0, max_x_value)
+                
+                # Add country labels on bars
+                annotate_bar_labels(ax, pivot, orientation="horizontal")
+                
+                # Legend only on top subplot
+                if i == 0:
+                    format_legend(ax, title="Country")
+                else:
+                    ax.legend().set_visible(False)
+        
+        # Overall figure styling
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        
+        # Save figure
+        filename = f"value_addition_simple_scenario_comparison_{constraint}_subplots.png"
+        filepath = os.path.join(output_dir, filename)
+        fig.savefig(filepath, dpi=300)
+        plt.close(fig)
+        saved_paths.append(filepath)
+    
+    return saved_paths
+
+
+
+def plot_value_addition_simple_gdp_share_scenario_comparison_subplots(df, output_dir):
+    """Create scenario comparison subplots for simple value addition GDP share with 3 rows (BAU, Early Refining, Precursor)"""
+    # Import the compute function from the GDP share plotting module
+    import sys
+    import os
+    sys.path.append(os.path.dirname(__file__))
+    from plot_gdp_share_by_country_all_constraints import compute_value_addition_simple_share, adjust_gdp_for_inflation
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Compute the GDP share data using the simple function
+    computed_df = compute_value_addition_simple_share(df)
+    
+    if computed_df.empty:
+        return []
+    
+    # Filter for 2040 scenarios only and mid demand levels
+    computed_df_filtered = computed_df[
+        (computed_df["value"] > 0) &
+        (computed_df["value"].notna()) &
+        (computed_df["scenario"].str.contains("2040")) &
+        (
+            ((computed_df["constraint"].str.contains("country")) & (computed_df["scenario"].str.contains("mid_min"))) |
+            ((computed_df["constraint"].str.contains("region")) & (computed_df["scenario"].str.contains("mid_max")))
+        )
+    ].copy()
+    
+    if computed_df_filtered.empty:
+        return []
+    
+    # Define scenario mapping
+    scenario_mapping = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Processing',
+        'precursor_2040': 'Product Manufacturing'
+    }
+    
+    # Add reference_mineral_short if missing
+    if 'reference_mineral_short' not in computed_df_filtered.columns and 'reference_mineral' in computed_df_filtered.columns:
+        computed_df_filtered['reference_mineral_short'] = computed_df_filtered['reference_mineral'].map(reference_mineral_namemap)
+    
+    saved_paths = []
+    
+    # Group by constraint only to compare scenarios within each constraint
+    for constraint, constraint_group in computed_df_filtered.groupby("constraint"):
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+        
+        # Get scenarios present in this constraint group
+        available_scenarios = []
+        scenario_data = {}
+        
+        for scenario_key, scenario_name in scenario_mapping.items():
+            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_filtered.empty:
+                available_scenarios.append((scenario_key, scenario_name))
+                scenario_data[scenario_key] = scenario_data_filtered
+        
+        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+            continue
+        
+        # First pass: find maximum x-value across all scenarios for consistent scaling
+        max_x_value = 0
+        for scenario_key, scenario_name in scenario_mapping.items():
+            if scenario_key in [s[0] for s in available_scenarios]:
+                scenario_data_temp = scenario_data[scenario_key]
+                # Handle both 'country' and 'iso3' column names
+                country_col = 'country' if 'country' in scenario_data_temp.columns else 'iso3'
+                mineral_col = 'reference_mineral_short' if 'reference_mineral_short' in scenario_data_temp.columns else 'reference_mineral'
+                
+                temp_grouped = scenario_data_temp.groupby([mineral_col, country_col])["value"].sum().reset_index()
+                if not temp_grouped.empty:
+                    temp_pivot = temp_grouped.pivot_table(
+                        index=mineral_col,
+                        columns=country_col,
+                        values="value",
+                        fill_value=0
+                    )
+                    if not temp_pivot.empty:
+                        row_totals = temp_pivot.sum(axis=1)
+                        if len(row_totals) > 0:
+                            max_x_value = max(max_x_value, row_totals.max())
+        
+        # Add 10% padding to max value for better visualization
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.1
+        
+        # Create subplot figure with one column, multiple rows
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        if len(available_scenarios) == 1:
+            axes = [axes]
+        
+        figure_title = f"Value Addition Simple GDP Share Scenario Comparison — {constraint_type} {constraint_status}"
+        
+        for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
+            ax = axes[i]
+            group_data = scenario_data[scenario_key]
+            
+            # Handle both 'country' and 'iso3' column names
+            country_col = 'country' if 'country' in group_data.columns else 'iso3'
+            mineral_col = 'reference_mineral_short' if 'reference_mineral_short' in group_data.columns else 'reference_mineral'
+            
+            # Aggregate by mineral and country
+            grouped = group_data.groupby([mineral_col, country_col])["value"].sum().reset_index()
+            
+            if not grouped.empty:
+                # Create pivot table for stacked bars
+                pivot = grouped.pivot_table(
+                    index=mineral_col,
+                    columns=country_col,
+                    values="value",
+                    fill_value=0
+                )
+                
+                # Sort by total GDP share for consistent ordering
+                pivot["total"] = pivot.sum(axis=1)
+                pivot = pivot.sort_values(by="total", ascending=True).drop(columns="total")
+                
+                # Generate country color mapping
+                countries = list(pivot.columns)
+                country_colors = generate_country_colormap(countries)
+                colors = [country_colors.get(country, "#999999") for country in countries]
+                
+                # Create stacked horizontal bar chart
+                pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
+                
+                # Styling
+                ax.set_title(f"{scenario_name}", fontsize=16, fontweight="bold")
+                ax.set_ylabel("Mineral", fontsize=14)
+                if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
+                    ax.set_xlabel("Value Addition Simple (% of GDP)", fontsize=14)
+                ax.tick_params(labelsize=12)
+                ax.grid(axis="x", linestyle="--", alpha=0.6)
+                ax.set_axisbelow(True)
+                
+                # Set consistent x-axis limits across all subplots
+                if max_x_value > 0:
+                    ax.set_xlim(0, max_x_value)
+                
+                # Add country labels on bars (abbreviated for space)
+                for j, mineral in enumerate(pivot.index):
+                    cumulative_left = 0
+                    for country in pivot.columns:
+                        width = pivot.loc[mineral, country]
+                        if width > max(pivot.max().max() * 0.05, 0.01):  # Label significant segments
+                            ax.text(
+                                cumulative_left + width / 2,
+                                j,
+                                country,  # Country codes are already short
+                                ha="center", va="center",
+                                fontsize=9, color="white", fontweight="bold"
+                            )
+                        cumulative_left += width
+                
+                # Legend only on top subplot
+                if i == 0:
+                    format_legend(ax, title="Country")
+                else:
+                    ax.legend().set_visible(False)
+        
+        # Overall figure styling
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        
+        # Save figure
+        filename = f"value_addition_simple_gdp_share_scenario_comparison_{constraint}_subplots.png"
+        filepath = os.path.join(output_dir, filename)
+        fig.savefig(filepath, dpi=300)
+        plt.close(fig)
+        saved_paths.append(filepath)
+    
+    return saved_paths

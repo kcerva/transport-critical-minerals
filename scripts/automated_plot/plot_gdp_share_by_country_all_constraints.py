@@ -320,3 +320,24 @@ def compute_revenue_share(df):
     df.rename(columns={"iso3": "country"}, inplace=True)
     # Keep all essential columns for plotting
     return df[["country", "year", "reference_mineral", "scenario", "constraint", "variable", "value"]]
+
+def compute_value_addition_simple_share(df):
+    # Import simple value addition calculation function
+    from plot_emissions_water_all_countries import calc_value_added_simple
+    
+    df = adjust_gdp_for_inflation(df.copy())
+    df = df[df["processing_stage"] > 0]
+    df = df[df["gdp_usd"] > 0]  # Filter out zero GDP values
+    df = df.sort_values(by=["iso3", "reference_mineral", "scenario", "processing_stage"])
+    df["value_added_simple"] = 0.0
+
+    # Apply simple value addition calculation (no route validation)
+    df = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]).apply(
+        calc_value_added_simple
+    ).reset_index(drop=True)
+    
+    df["value"] = df["value_added_simple"] / df["gdp_usd"] * 100
+    df["variable"] = "value_addition_simple"
+    df.rename(columns={"iso3": "country"}, inplace=True)
+    # Keep all essential columns for plotting
+    return df[["country", "year", "reference_mineral", "scenario", "constraint", "variable", "value"]]
