@@ -105,12 +105,16 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
 
             # Get goal type for this scenario group
             goal_type = group_g["goal_type"].iloc[0] if not group_g.empty else "Unknown"
-            ax.set_title(f"{year_val} - {goal_type}", fontsize=14, fontweight="bold")
-            ax.set_ylabel("Country", fontsize=12)
-            ax.set_xlabel("Production (million tonnes)", fontsize=12)
-            ax.tick_params(labelsize=11)
+            ax.set_title(f"{year_val} - {goal_type}", fontsize=18, fontweight="bold")
+            ax.set_ylabel("Country", fontsize=14)
+            ax.set_xlabel("Production (million tonnes)", fontsize=14)
+            ax.tick_params(labelsize=12)
             ax.grid(axis="x", linestyle="--", alpha=0.6)
             ax.set_axisbelow(True)
+            
+            # Set consistent x-axis limits across all subplots
+            if max_x_value > 0:
+                ax.set_xlim(0, max_x_value)
 
             for i, row in enumerate(pivot.index):
                 cumulative_left = 0
@@ -122,7 +126,7 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
                             i,
                             reference_mineral_namemap.get(mineral, ""),
                             ha="center", va="center",
-                            fontsize=9, color="white", fontweight="bold"
+                            fontsize=10, color="white", fontweight="bold"
                         )
                     cumulative_left += width
 
@@ -130,11 +134,11 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
                 title="Mineral",
                 loc="upper left",
                 bbox_to_anchor=(1.01, 1),
-                fontsize=10,
-                title_fontsize=11
+                fontsize=11,
+                title_fontsize=12
             )
 
-        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
 
         filename = f"production_{scenario_clean}_{constraint}_by_year_subplots.png".replace(" ", "_")
@@ -207,11 +211,34 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
             continue
             
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=True)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
         figure_title = f"Scenario Comparison — {constraint_type} {constraint_status}"
+        
+        # First pass: find maximum x-value across all scenarios for consistent scaling
+        max_x_value = 0
+        for scenario_key, scenario_name in scenario_mapping.items():
+            if scenario_key in [s[0] for s in available_scenarios]:
+                scenario_data_temp = scenario_data[scenario_key]
+                temp_grouped = scenario_data_temp.groupby(["iso3", "reference_mineral"])["production_tonnes"].sum().reset_index()
+                temp_grouped["production_million_tonnes"] = temp_grouped["production_tonnes"] / 1e6
+                if not temp_grouped.empty:
+                    temp_pivot = temp_grouped.pivot_table(
+                        index="iso3",
+                        columns="reference_mineral",
+                        values="production_million_tonnes",
+                        fill_value=0
+                    )
+                    if not temp_pivot.empty:
+                        row_totals = temp_pivot.sum(axis=1)
+                        if len(row_totals) > 0:
+                            max_x_value = max(max_x_value, row_totals.max())
+        
+        # Add 10% padding to max value for better visualization
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.1
         
         for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
             ax = axes[i]
@@ -238,13 +265,17 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
                 pivot.plot(kind="barh", stacked=True, color=colors, ax=ax)
                 
                 # Styling
-                ax.set_title(f"{scenario_name}", fontsize=14, fontweight="bold")
-                ax.set_ylabel("Country", fontsize=12)
+                ax.set_title(f"{scenario_name}", fontsize=16, fontweight="bold")
+                ax.set_ylabel("Country", fontsize=14)
                 if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
-                    ax.set_xlabel("Production (million tonnes)", fontsize=12)
-                ax.tick_params(labelsize=11)
+                    ax.set_xlabel("Production (million tonnes)", fontsize=14)
+                ax.tick_params(labelsize=12)
                 ax.grid(axis="x", linestyle="--", alpha=0.6)
                 ax.set_axisbelow(True)
+                
+                # Set consistent x-axis limits across all subplots
+                if max_x_value > 0:
+                    ax.set_xlim(0, max_x_value)
                 
                 # Add mineral labels on bars
                 for j, country in enumerate(pivot.index):
@@ -257,7 +288,7 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
                                 j,
                                 reference_mineral_namemap.get(mineral, ""),
                                 ha="center", va="center",
-                                fontsize=9, color="white", fontweight="bold"
+                                fontsize=10, color="white", fontweight="bold"
                             )
                         cumulative_left += width
                 
@@ -267,18 +298,236 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
                         title="Mineral",
                         loc="upper left", 
                         bbox_to_anchor=(1.01, 1),
-                        fontsize=10,
-                        title_fontsize=11
+                        fontsize=11,
+                        title_fontsize=12
                     )
                 else:
                     ax.legend().set_visible(False)
             
         # Overall figure styling
-        fig.suptitle(figure_title, fontsize=16, fontweight="bold")
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 0.88, 0.97])
         
         # Save figure
         filename = f"production_scenario_comparison_{constraint}_subplots.png"
+        filepath = os.path.join(output_dir, filename)
+        fig.savefig(filepath, dpi=300)
+        plt.close(fig)
+        saved_paths.append(filepath)
+    
+    return saved_paths
+
+
+def plot_production_processing_focus_subplots(df, output_dir):
+    """Create processing-focused production subplots with grouped mineral columns for better comparison"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Filter for 2040 scenarios only, mid demand levels, and processing stages only
+    df_filtered = df[
+        (df["processing_stage"] > 0) &
+        (df["scenario"].str.contains("2040")) &
+        (df["processing_type"].isin(["Early refining", "Precursor related product"])) &
+        (
+            ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+        )
+    ]
+    
+    if df_filtered.empty:
+        return []
+    
+    # Define scenario mapping
+    scenario_mapping = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Processing', 
+        'precursor_2040': 'Product Manufacturing'
+    }
+    
+    saved_paths = []
+    
+    # Group by constraint only (not scenario) to compare scenarios within each constraint
+    for constraint, constraint_group in df_filtered.groupby("constraint"):
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"  
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+        
+        # Get scenarios present in this constraint group
+        available_scenarios = []
+        scenario_data = {}
+        
+        for scenario_key, scenario_name in scenario_mapping.items():
+            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_filtered.empty:
+                available_scenarios.append((scenario_key, scenario_name))
+                scenario_data[scenario_key] = scenario_data_filtered
+        
+        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+            continue
+            
+        # Create subplot figure with one column, multiple rows
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        if len(available_scenarios) == 1:
+            axes = [axes]
+        
+        figure_title = f"Processing Production Comparison (Grouped) — {constraint_type} {constraint_status}\n(Early Refining & Precursor Products Only)"
+        
+        # First pass: find maximum x-value across all scenarios for consistent scaling  
+        max_x_value = 0
+        for scenario_key, scenario_name in scenario_mapping.items():
+            if scenario_key in [s[0] for s in available_scenarios]:
+                scenario_data_temp = scenario_data[scenario_key]
+                
+                # Calculate combined totals for each country across both processing types
+                combined_totals = {}
+                for processing_type in ["Early refining", "Precursor related product"]:
+                    temp_data = scenario_data_temp[scenario_data_temp["processing_type"] == processing_type]
+                    if not temp_data.empty:
+                        temp_grouped = temp_data.groupby(["iso3", "reference_mineral"])["production_tonnes"].sum().reset_index()
+                        temp_grouped["production_million_tonnes"] = temp_grouped["production_tonnes"] / 1e6
+                        for _, row in temp_grouped.iterrows():
+                            country = row["iso3"]
+                            mineral = row["reference_mineral"]
+                            value = row["production_million_tonnes"]
+                            if country not in combined_totals:
+                                combined_totals[country] = 0
+                            combined_totals[country] += value
+                
+                if combined_totals:
+                    max_x_value = max(max_x_value, max(combined_totals.values()))
+        
+        # Add 10% padding to max value for better visualization
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.1
+        
+        for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
+            ax = axes[i]
+            group_data = scenario_data[scenario_key]
+            
+            # Separate data by processing type
+            early_refining_data = group_data[group_data["processing_type"] == "Early refining"]
+            precursor_data = group_data[group_data["processing_type"] == "Precursor related product"]
+            
+            # Aggregate by country and mineral for each processing type
+            early_grouped = early_refining_data.groupby(["iso3", "reference_mineral"])["production_tonnes"].sum().reset_index()
+            early_grouped["production_million_tonnes"] = early_grouped["production_tonnes"] / 1e6
+            
+            precursor_grouped = precursor_data.groupby(["iso3", "reference_mineral"])["production_tonnes"].sum().reset_index()
+            precursor_grouped["production_million_tonnes"] = precursor_grouped["production_tonnes"] / 1e6
+            
+            # Get all unique minerals and countries
+            all_minerals = sorted(set(early_grouped["reference_mineral"].unique()) | set(precursor_grouped["reference_mineral"].unique()))
+            all_countries = sorted(set(early_grouped["iso3"].unique()) | set(precursor_grouped["iso3"].unique()))
+            
+            if not all_minerals or not all_countries:
+                continue
+            
+            # Create combined dataframe with grouped columns
+            combined_data = pd.DataFrame(index=all_countries)
+            
+            # For each mineral, add early refining and precursor columns
+            for mineral in all_minerals:
+                # Early refining column
+                early_mineral = early_grouped[early_grouped["reference_mineral"] == mineral]
+                if not early_mineral.empty:
+                    early_values = early_mineral.set_index("iso3")["production_million_tonnes"]
+                    combined_data[f"{mineral}_early"] = early_values.reindex(all_countries, fill_value=0)
+                else:
+                    combined_data[f"{mineral}_early"] = 0
+                    
+                # Precursor column  
+                precursor_mineral = precursor_grouped[precursor_grouped["reference_mineral"] == mineral]
+                if not precursor_mineral.empty:
+                    precursor_values = precursor_mineral.set_index("iso3")["production_million_tonnes"]
+                    combined_data[f"{mineral}_precursor"] = precursor_values.reindex(all_countries, fill_value=0)
+                else:
+                    combined_data[f"{mineral}_precursor"] = 0
+            
+            # Calculate total production for sorting
+            combined_data["total"] = combined_data.sum(axis=1)
+            combined_data = combined_data.sort_values("total", ascending=True)
+            sorted_countries = combined_data.index
+            
+            # Drop the total column before plotting
+            combined_data = combined_data.drop(columns=["total"])
+            
+            # Create color list - same base color for each mineral, different alpha
+            colors = []
+            for col in combined_data.columns:
+                mineral_name = col.split("_")[0]  # Extract mineral name
+                base_color = reference_mineral_colormap.get(mineral_name, "#999999")
+                if "_early" in col:
+                    # Convert hex to RGB and add alpha
+                    colors.append(base_color + "99")  # 60% opacity in hex
+                else:  # precursor
+                    colors.append(base_color)  # Full opacity
+            
+            # Plot stacked horizontal bars
+            combined_data.plot(kind="barh", stacked=True, color=colors, ax=ax, width=0.8)
+            
+            # Styling
+            ax.set_title(f"{scenario_name}", fontsize=16, fontweight="bold")
+            ax.set_ylabel("Country", fontsize=14)
+            if i == len(available_scenarios) - 1:  # Only bottom subplot gets x-label
+                ax.set_xlabel("Production (million tonnes)", fontsize=14)
+            ax.tick_params(labelsize=12)
+            ax.grid(axis="x", linestyle="--", alpha=0.6)
+            ax.set_axisbelow(True)
+            
+            # Set consistent x-axis limits across all subplots
+            if max_x_value > 0:
+                ax.set_xlim(0, max_x_value)
+            
+            # Add mineral labels on significant segments
+            for j, country in enumerate(sorted_countries):
+                cumulative_left = 0
+                for col in combined_data.columns:
+                    width = combined_data.loc[country, col]
+                    if width > 0.05:  # Only label significant segments
+                        mineral_name = col.split("_")[0]
+                        processing_type = col.split("_")[1]
+                        # Use abbreviated mineral name and add indicator for processing type
+                        label = reference_mineral_namemap.get(mineral_name, "")
+                        if processing_type == "early":
+                            label = label.lower()  # Lowercase for early refining
+                        # else keep uppercase for precursor
+                        
+                        ax.text(
+                            cumulative_left + width / 2,
+                            j,
+                            label,
+                            ha="center", va="center",
+                            fontsize=10, color="white", fontweight="bold"
+                        )
+                    cumulative_left += width
+            
+            # Create custom legend for first subplot only
+            if i == 0:
+                from matplotlib.patches import Patch
+                legend_handles = []
+                
+                # Add legend for each mineral with both processing types
+                for mineral in all_minerals:
+                    color = reference_mineral_colormap.get(mineral, "#999999")
+                    # Add main mineral entry
+                    legend_handles.append(Patch(facecolor=color, label=f"{mineral}"))
+                    # Add processing type sub-entries
+                    legend_handles.append(Patch(facecolor=color, alpha=0.6, label=f"  ↳ Early Refining"))
+                    legend_handles.append(Patch(facecolor=color, alpha=1.0, label=f"  ↳ Precursor Product"))
+                
+                ax.legend(handles=legend_handles, 
+                         loc="upper left", 
+                         bbox_to_anchor=(1.01, 1),
+                         fontsize=11,
+                         title="Mineral & Processing",
+                         title_fontsize=12)
+            else:
+                ax.legend().set_visible(False)
+            
+        # Overall figure styling
+        fig.suptitle(figure_title, fontsize=18, fontweight="bold")
+        plt.tight_layout(rect=[0, 0, 0.88, 0.97])
+        
+        # Save figure
+        filename = f"production_processing_focus_{constraint}_subplots.png"
         filepath = os.path.join(output_dir, filename)
         fig.savefig(filepath, dpi=300)
         plt.close(fig)
