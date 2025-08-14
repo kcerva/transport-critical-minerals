@@ -25,30 +25,15 @@ def get_scenario_name(base_scenario, constraint_type):
         raise ValueError(f"Unknown constraint_type: {constraint_type}")
 
 def filter_by_processing_type_stages(df, scenario, constraint):
-    """Filter data and add processing type information"""
+    """Filter data using existing processing_type information"""
     
-    # Processing stage to type mapping
-    processing_stage_to_type_map = {
-        1.0: "Beneficiation",
-        2.0: "Early refining", 
-        3.0: "Early refining",
-        4.1: "Precursor related product",
-        4.3: "Precursor related product", 
-        5.0: "Precursor related product"
-    }
-    
-    # Filter data
+    # Filter data - use original processing_type from data
     filtered = df[
         (df['scenario'] == scenario) & 
         (df['constraint'] == constraint) &
-        (df['processing_stage'] > 0)  # Exclude stage 0
+        (df['processing_stage'] > 0) &  # Exclude stage 0
+        (df['processing_type'] != 'Metal content')  # Exclude Metal content for processing comparisons
     ].copy()
-    
-    # Add processing type info
-    filtered['processing_type'] = filtered['processing_stage'].map(processing_stage_to_type_map)
-    
-    # Remove any unmapped stages
-    filtered = filtered.dropna(subset=['processing_type'])
     
     return filtered
 
@@ -524,7 +509,7 @@ def generate_mineral_breakdown_plots(df, output_dir):
     
     scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
     scenario_labels = ['BAU 2040', 'Early Processing 2040', 'Product Manufacturing 2040']
-    processing_types = ["Beneficiation", "Early refining", "Precursor related product"]
+    all_processing_types = ["Beneficiation", "Early refining", "Precursor related product"]
     
     # Generate for both comparison types
     comparison_configs = [
@@ -533,47 +518,58 @@ def generate_mineral_breakdown_plots(df, output_dir):
             'title': 'Constrained vs Unconstrained (National Focus) - Mineral Breakdown',
             'calc_func': calculate_constrained_vs_unconstrained_difference,
             'policy_param': 'country',
-            'scenarios': scenarios  # Include all scenarios for constrained vs unconstrained
+            'scenarios': scenarios,  # Include all scenarios for constrained vs unconstrained
+            'processing_types': all_processing_types  # Include Beneficiation (will show differences when data is fixed)
         },
         {
             'name': 'constrained_vs_unconstrained_region_mineral_breakdown', 
             'title': 'Constrained vs Unconstrained (Regional Integration) - Mineral Breakdown',
             'calc_func': calculate_constrained_vs_unconstrained_difference,
             'policy_param': 'region',
-            'scenarios': scenarios  # Include all scenarios
+            'scenarios': scenarios,  # Include all scenarios
+            'processing_types': all_processing_types  # Include Beneficiation (will show differences when data is fixed)
         },
         {
             'name': 'regional_vs_national_constrained_mineral_breakdown',
             'title': 'Regional vs National (Constrained) - Mineral Breakdown',
             'calc_func': calculate_regional_vs_national_difference,
             'policy_param': 'constrained',
-            'scenarios': ['early_refining_2040', 'precursor_2040']  # Exclude BAU
+            'scenarios': ['early_refining_2040', 'precursor_2040'],  # Exclude BAU
+            'processing_types': ["Early refining", "Precursor related product"]  # Exclude Beneficiation for cleaner visuals
         },
         {
             'name': 'regional_vs_national_unconstrained_mineral_breakdown',
             'title': 'Regional vs National (Unconstrained) - Mineral Breakdown', 
             'calc_func': calculate_regional_vs_national_difference,
             'policy_param': 'unconstrained',
-            'scenarios': ['early_refining_2040', 'precursor_2040']  # Exclude BAU
+            'scenarios': ['early_refining_2040', 'precursor_2040'],  # Exclude BAU
+            'processing_types': ["Early refining", "Precursor related product"]  # Exclude Beneficiation for cleaner visuals
         }
     ]
     
     for config in comparison_configs:
         print(f"\n=== Generating {config['title']} ===")
         
-        # Determine grid size based on number of scenarios
+        # Determine grid size based on number of scenarios and processing types
         n_scenarios = len(config['scenarios'])
+        n_processing_types = len(config['processing_types'])
+        processing_types = config['processing_types']
+        
         if n_scenarios == 3:
-            figsize = (20, 15)
+            figsize = (7 * n_processing_types, 15)  # Adjust width based on number of processing types
         else:  # 2 scenarios
-            figsize = (16, 12)
+            figsize = (7 * n_processing_types, 12)  # Adjust width based on number of processing types
             
-        # Create figure with 3×n_scenarios grid
-        fig, axes = plt.subplots(n_scenarios, 3, figsize=figsize, dpi=300)
+        # Create figure with n_processing_types×n_scenarios grid
+        fig, axes = plt.subplots(n_scenarios, n_processing_types, figsize=figsize, dpi=300)
         
         # Ensure axes is always 2D array
-        if n_scenarios == 1:
+        if n_scenarios == 1 and n_processing_types == 1:
+            axes = axes.reshape(1, 1)
+        elif n_scenarios == 1:
             axes = axes.reshape(1, -1)
+        elif n_processing_types == 1:
+            axes = axes.reshape(-1, 1)
         elif len(axes.shape) == 1:
             axes = axes.reshape(-1, 1)
         
