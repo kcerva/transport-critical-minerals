@@ -633,7 +633,9 @@ def generate_mineral_breakdown_plots(df, output_dir):
                 
                 # Prepare data for plotting
                 y_pos = np.arange(len(countries))
-                left_positions = np.zeros(len(countries))
+                # Track positive and negative positions separately
+                left_pos_positions = np.zeros(len(countries))  # For positive values
+                left_neg_positions = np.zeros(len(countries))  # For negative values
                 
                 # Plot each mineral
                 for mineral in minerals:
@@ -651,6 +653,16 @@ def generate_mineral_breakdown_plots(df, output_dir):
                         else:
                             country_values.append(0.0)
                     
+                    # Separate positive and negative values for proper stacking
+                    country_values_array = np.array(country_values)
+                    
+                    # Determine left positions based on sign
+                    left_positions = np.where(
+                        country_values_array >= 0,
+                        left_pos_positions,
+                        left_neg_positions
+                    )
+                    
                     # Plot bars
                     bars = ax.barh(
                         y_pos, country_values, left=left_positions,
@@ -659,7 +671,19 @@ def generate_mineral_breakdown_plots(df, output_dir):
                         label=mineral if s_idx == 0 and p_idx == 0 else ""
                     )
                     
-                    left_positions += np.array(country_values)
+                    # Update positions for next mineral
+                    # Positive values stack to the right
+                    left_pos_positions = np.where(
+                        country_values_array > 0,
+                        left_pos_positions + country_values_array,
+                        left_pos_positions
+                    )
+                    # Negative values stack to the left
+                    left_neg_positions = np.where(
+                        country_values_array < 0,
+                        left_neg_positions + country_values_array,
+                        left_neg_positions
+                    )
                 
                 # Formatting
                 ax.set_yticks(y_pos)
@@ -686,6 +710,159 @@ def generate_mineral_breakdown_plots(df, output_dir):
         
         # Save
         output_path = os.path.join(output_dir, f"{config['name']}.png")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {output_path}")
+        plt.close()
+
+def generate_beneficiation_only_plots(df, output_dir):
+    """
+    Generate constrained vs unconstrained plots for Beneficiation only with mineral breakdown
+    Uses 1x3 layout (one row, three columns) for space efficiency
+    """
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+    scenario_labels = ['BAU 2040', 'Early Processing 2040', 'Product Manufacturing 2040']
+    
+    # Two policy types to generate
+    policy_configs = [
+        {
+            'policy': 'country',
+            'title': 'Constrained vs Unconstrained Production Differences - National Focus (Beneficiation Only)',
+            'filename': 'constrained_vs_unconstrained_country_beneficiation_only.png'
+        },
+        {
+            'policy': 'region',
+            'title': 'Constrained vs Unconstrained Production Differences - Regional Integration (Beneficiation Only)',
+            'filename': 'constrained_vs_unconstrained_region_beneficiation_only.png'
+        }
+    ]
+    
+    for policy_config in policy_configs:
+        print(f"\n=== Generating Beneficiation-only plot for {policy_config['policy']} policy ===")
+        
+        # Create figure with 1x3 layout
+        fig, axes = plt.subplots(1, 3, figsize=(18, 8), dpi=300)
+        
+        # Collect all data for consistent axis scaling
+        all_data = []
+        all_stacked_values = []
+        
+        # First pass: collect data and calculate axis range
+        for scenario in scenarios:
+            diff_data = calculate_constrained_vs_unconstrained_difference(df, scenario, policy_config['policy'])
+            
+            # Filter for Beneficiation only
+            benef_data = diff_data[diff_data['processing_type'] == 'Beneficiation'] if not diff_data.empty else pd.DataFrame()
+            all_data.append(benef_data)
+            
+            # Calculate stacked totals for axis scaling
+            if not benef_data.empty:
+                countries = sorted(benef_data['iso3'].unique())
+                for country in countries:
+                    country_data = benef_data[benef_data['iso3'] == country]
+                    total = country_data['production_diff_mt'].sum()
+                    all_stacked_values.append(total)
+        
+        # Calculate consistent x-axis range
+        if all_stacked_values:
+            x_min = min(all_stacked_values) * 1.15
+            x_max = max(all_stacked_values) * 1.15
+            x_min = min(x_min, 0)
+            x_max = max(x_max, 0)
+        else:
+            x_min, x_max = -1, 1
+        
+        # Get mineral colors
+        mineral_colors = get_mineral_colors()
+        
+        # Second pass: create plots
+        for idx, (scenario, label, benef_data) in enumerate(zip(scenarios, scenario_labels, all_data)):
+            ax = axes[idx]
+            
+            if benef_data.empty:
+                ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(label, fontsize=12, fontweight='bold')
+                continue
+            
+            # Get unique countries and minerals
+            countries = sorted(benef_data['iso3'].unique())
+            minerals = reference_minerals
+            
+            # Prepare data for plotting
+            y_pos = np.arange(len(countries))
+            # Track positive and negative positions separately
+            left_pos_positions = np.zeros(len(countries))  # For positive values
+            left_neg_positions = np.zeros(len(countries))  # For negative values
+            
+            # Plot each mineral
+            for mineral in minerals:
+                mineral_data = benef_data[benef_data['reference_mineral'] == mineral]
+                
+                if mineral_data.empty:
+                    continue
+                
+                # Create country-aligned data
+                country_values = []
+                for country in countries:
+                    country_mineral_data = mineral_data[mineral_data['iso3'] == country]
+                    if not country_mineral_data.empty:
+                        country_values.append(country_mineral_data['production_diff_mt'].iloc[0])
+                    else:
+                        country_values.append(0.0)
+                
+                # Separate positive and negative values for proper stacking
+                country_values_array = np.array(country_values)
+                
+                # Determine left positions based on sign
+                left_positions = np.where(
+                    country_values_array >= 0,
+                    left_pos_positions,
+                    left_neg_positions
+                )
+                
+                # Plot with mineral color
+                ax.barh(
+                    y_pos, country_values, left=left_positions,
+                    color=mineral_colors.get(mineral, '#cccccc'),
+                    alpha=0.8, linewidth=0.5, edgecolor='white',
+                    label=mineral if idx == 0 else ""  # Only show legend on first subplot
+                )
+                
+                # Update positions for next mineral
+                # Positive values stack to the right
+                left_pos_positions = np.where(
+                    country_values_array > 0,
+                    left_pos_positions + country_values_array,
+                    left_pos_positions
+                )
+                # Negative values stack to the left  
+                left_neg_positions = np.where(
+                    country_values_array < 0,
+                    left_neg_positions + country_values_array,
+                    left_neg_positions
+                )
+            
+            # Formatting
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(countries, fontsize=9)
+            ax.set_xlim(x_min, x_max)
+            ax.axvline(0, color='black', linewidth=1.0, alpha=0.8)
+            ax.grid(True, axis='x', linestyle='--', alpha=0.6)
+            ax.set_title(label, fontsize=12, fontweight='bold', pad=10)
+            ax.set_xlabel('Production Difference: Constrained - Unconstrained (Million Tonnes)', fontsize=10)
+            
+            # Legend only on first subplot
+            if idx == 0:
+                ax.legend(bbox_to_anchor=(0, -0.15), loc='upper left', ncol=3, fontsize=8)
+        
+        # Overall title
+        fig.suptitle(policy_config['title'], fontsize=14, fontweight='bold', y=0.98)
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        
+        # Save
+        output_path = os.path.join(output_dir, policy_config['filename'])
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         print(f"Saved: {output_path}")
         plt.close()
@@ -717,6 +894,9 @@ def generate_essential_difference_plots(output_dir):
     
     print("Generating Mineral Breakdown plots (Processing Type Subplots)...")
     generate_mineral_breakdown_plots(df, output_dir)
+    
+    print("Generating Beneficiation-only Constrained vs Unconstrained plots...")
+    generate_beneficiation_only_plots(df, output_dir)
     
     print(f"\nAll plots saved to: {output_dir}")
 
