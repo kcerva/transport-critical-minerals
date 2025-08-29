@@ -174,8 +174,8 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
     # Define scenario mapping  
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     # Add reference_mineral_short if missing
@@ -224,8 +224,12 @@ def plot_gdp_share_scenario_comparison_subplots(df, output_dir, compute_function
                     scenario_max = temp_pivot.sum(axis=1).max()
                     max_x_value = max(max_x_value, scenario_max)
         
+        # Add padding to max_x_value for better visualization (15% padding)
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.15
+        
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         

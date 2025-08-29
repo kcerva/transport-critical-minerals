@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import re
 
@@ -21,7 +22,7 @@ from plot_config import (
 
 def plot_emissions_by_country_all_constraints(df, output_dir):
     os.makedirs(output_dir, exist_ok=True)
-    df["emissions_mt"] = df["energy_tonsCO2eq"] / 1e6
+    df["emissions_mt"] = (df["transport_total_tonsCO2eq"] + df["energy_tonsCO2eq"]) / 1e6
 
     df["scenario_general"] = df["scenario"].apply(lambda s: re.sub(r'^\d{4}_', '', s))
 
@@ -166,30 +167,182 @@ def plot_emissions_scenario_comparison_subplots(df, output_dir):
     """Create proper scenario comparison subplots for emissions with 3 rows (BAU, Early Refining, Precursor)"""
     os.makedirs(output_dir, exist_ok=True)
     
-    # Note: This function requires energy_tonsCO2eq column which is currently not available
-    # Commenting out the implementation until energy data is available
-    # When energy results are ready, uncomment and modify as needed
+    # Now using the available energy_tonsCO2eq column
+    df = df.copy()
+    df["emissions_mt"] = (df["transport_total_tonsCO2eq"] + df["energy_tonsCO2eq"]) / 1e6
     
-    print("⚠️  Emissions scenario comparison subplots skipped - energy_tonsCO2eq column not available")
-    print("    This will be implemented when energy results are available")
-    return []
+    # Filter for 2040 scenarios only and mid demand levels  
+    df_filtered = df[
+        (df["processing_stage"] > 0) &
+        (df["emissions_mt"] > 0) &
+        (df["scenario"].str.contains("2040")) &
+        (
+            ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+        )
+    ]
     
-    # TODO: Uncomment and modify when energy results are available
-    # df = df.copy()
-    # df["emissions_mt"] = df["energy_tonsCO2eq"] / 1e6
-    # 
-    # # Filter for 2040 scenarios only and mid demand levels  
-    # df_filtered = df[
-    #     (df["processing_stage"] > 0) &
-    #     (df["emissions_mt"] > 0) &
-    #     (df["scenario"].str.contains("2040")) &
-    #     (
-    #         ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
-    #         ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
-    #     )
-    # ]
-    # 
-    # [Rest of implementation following the same pattern as production subplots]
+    if df_filtered.empty:
+        print("Warning: No emissions data available for plotting")
+        return []
+    
+    # Define scenario mapping
+    scenario_mapping = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
+    }
+    
+    df_filtered = df_filtered.copy()
+    df_filtered["reference_mineral_short"] = df_filtered["reference_mineral"].map(reference_mineral_namemap)
+    
+    saved_paths = []
+    
+    # Group by constraint only (not scenario) to compare scenarios within each constraint
+    for constraint, constraint_group in df_filtered.groupby("constraint"):
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+        
+        # Get scenarios present in this constraint group
+        available_scenarios = []
+        scenario_data = {}
+        
+        for scenario_key, scenario_name in scenario_mapping.items():
+            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_filtered.empty:
+                available_scenarios.append((scenario_key, scenario_name))
+                scenario_data[scenario_key] = scenario_data_filtered
+        
+        if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
+            continue
+            
+        # Create subplot figure with one column, multiple rows
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
+        if len(available_scenarios) == 1:
+            axes = [axes]
+        
+        figure_title = f"CO₂eq Emissions Scenario Comparison — {constraint_type} {constraint_status}"
+        
+        # First pass: find maximum x-value across all scenarios for consistent scaling
+        max_x_value = 0
+        for scenario_key, scenario_name in scenario_mapping.items():
+            if scenario_key in [s[0] for s in available_scenarios]:
+                scenario_data_temp = scenario_data[scenario_key]
+                temp_grouped = scenario_data_temp.groupby(["reference_mineral_short", "iso3"])["emissions_mt"].sum().reset_index()
+                if not temp_grouped.empty:
+                    temp_pivot = temp_grouped.pivot_table(
+                        index="reference_mineral_short",
+                        columns="iso3",
+                        values="emissions_mt",
+                        fill_value=0
+                    )
+                    if not temp_pivot.empty:
+                        row_totals = temp_pivot.sum(axis=1)
+                        if len(row_totals) > 0:
+                            max_x_value = max(max_x_value, row_totals.max())
+        
+        # Add 10% padding to max value for better visualization
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.1
+        
+        for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
+            ax = axes[i]
+            group_data = scenario_data[scenario_key]
+            
+            # Group by mineral and country
+            grouped = group_data.groupby(["reference_mineral_short", "iso3"])["emissions_mt"].sum().reset_index()
+            
+            if grouped.empty:
+                ax.text(0.5, 0.5, 'No data available', ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(scenario_name)
+                continue
+            
+            # Pivot to get minerals as rows and countries as columns
+            pivot_data = grouped.pivot_table(
+                index="reference_mineral_short",
+                columns="iso3",
+                values="emissions_mt",
+                fill_value=0
+            )
+            
+            # Sort by total emissions
+            row_totals = pivot_data.sum(axis=1).sort_values(ascending=True)
+            pivot_data = pivot_data.loc[row_totals.index]
+            
+            # Create horizontal stacked bar chart
+            y_pos = np.arange(len(pivot_data.index))
+            left = np.zeros(len(pivot_data.index))
+            
+            # Create a color map for countries using project standard colors
+            countries = sorted(pivot_data.columns)
+            from plot_utils import generate_country_colormap
+            color_map = generate_country_colormap(countries)
+            
+            # Track positions for country labels
+            bar_positions = {}
+            for country in countries:
+                values = pivot_data[country].values
+                bars = ax.barh(y_pos, values, left=left, label=country, 
+                              color=color_map[country], alpha=0.8)
+                
+                # Store bar positions for labeling
+                for j, (bar, value) in enumerate(zip(bars, values)):
+                    if value > 0:  # Only store if there's actual data
+                        bar_positions[(j, country)] = {
+                            'left': left[j],
+                            'width': value,
+                            'center': left[j] + value/2
+                        }
+                
+                left += values
+            
+            # Add country ISO3 labels to bars that are large enough
+            for (mineral_idx, country), pos_info in bar_positions.items():
+                bar_width = pos_info['width']
+                # Only add label if bar is wide enough (relative to max value)
+                if bar_width > max_x_value * 0.03:  # At least 3% of max width
+                    ax.text(pos_info['center'], mineral_idx, country, 
+                           ha='center', va='center', fontweight='bold',
+                           fontsize=10, color='white')
+            
+            # Formatting with larger fonts
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(pivot_data.index, fontsize=12)
+            ax.set_xlabel('CO₂eq Emissions (Million Tonnes)', fontsize=14, fontweight='bold')
+            ax.set_title(scenario_name, fontsize=16, fontweight='bold', pad=20)
+            ax.set_xlim(0, max_x_value)
+            
+            # Improve tick formatting
+            ax.tick_params(axis='x', labelsize=11)
+            ax.tick_params(axis='y', labelsize=12)
+            
+            # Add grid
+            ax.grid(True, axis='x', alpha=0.3)
+            
+            # Add legend only to the last subplot with improved formatting
+            if i == len(available_scenarios) - 1:
+                ax.legend(title='Country', bbox_to_anchor=(1.05, 1), loc='upper left', 
+                         fontsize=12, title_fontsize=13, frameon=True, 
+                         fancybox=True, shadow=True, ncol=1, 
+                         borderaxespad=0, columnspacing=1.0, handletextpad=0.5)
+        
+        # Add main title with better positioning
+        fig.suptitle(figure_title, fontsize=18, fontweight='bold', y=0.95)
+        
+        # Adjust layout to provide space for legend and better title positioning
+        plt.tight_layout(rect=[0, 0.02, 0.85, 0.93])  # Better spacing top/bottom and right for legend
+        
+        # Save figure to emissions_scenario_comparison subdirectory
+        emissions_output_dir = os.path.join(output_dir, "emissions_scenario_comparison")
+        os.makedirs(emissions_output_dir, exist_ok=True)
+        filename = f"emissions_scenario_comparison_{constraint.replace('_', '_')}.png"
+        filepath = os.path.join(emissions_output_dir, filename)
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        plt.close()
+        saved_paths.append(filepath)
+        print(f"Saved emissions scenario comparison plot: {filename}")
+    
+    return saved_paths
 
 def plot_water_scenario_comparison_subplots(df, output_dir):
     """Create proper scenario comparison subplots for water usage with 3 rows (BAU, Early Refining, Precursor)"""
@@ -215,8 +368,8 @@ def plot_water_scenario_comparison_subplots(df, output_dir):
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     df_filtered = df_filtered.copy()
@@ -239,11 +392,11 @@ def plot_water_scenario_comparison_subplots(df, output_dir):
                 available_scenarios.append((scenario_key, scenario_name))
                 scenario_data[scenario_key] = scenario_data_filtered
         
-        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+        if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
             continue
             
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
@@ -516,8 +669,8 @@ def plot_value_addition_scenario_comparison_subplots(df, output_dir):
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     df_filtered = df_filtered.copy()
@@ -540,11 +693,11 @@ def plot_value_addition_scenario_comparison_subplots(df, output_dir):
                 available_scenarios.append((scenario_key, scenario_name))
                 scenario_data[scenario_key] = scenario_data_filtered
         
-        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+        if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
             continue
             
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
@@ -672,8 +825,8 @@ def plot_value_addition_gdp_share_scenario_comparison_subplots(df, output_dir):
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     # Add reference_mineral_short if missing
@@ -697,11 +850,11 @@ def plot_value_addition_gdp_share_scenario_comparison_subplots(df, output_dir):
                 available_scenarios.append((scenario_key, scenario_name))
                 scenario_data[scenario_key] = scenario_data_filtered
         
-        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+        if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
             continue
         
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
@@ -851,8 +1004,8 @@ def plot_value_addition_simple_scenario_comparison_subplots(df, output_dir):
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     df_filtered = df_filtered.copy()
@@ -875,7 +1028,7 @@ def plot_value_addition_simple_scenario_comparison_subplots(df, output_dir):
                 available_scenarios.append((scenario_key, scenario_name))
                 scenario_data[scenario_key] = scenario_data_filtered
         
-        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+        if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
             continue
             
         # First pass: find maximum x-value across all scenarios for consistent scaling
@@ -903,7 +1056,7 @@ def plot_value_addition_simple_scenario_comparison_subplots(df, output_dir):
             max_x_value = max_x_value * 1.1
         
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
@@ -1009,8 +1162,8 @@ def plot_value_addition_simple_gdp_share_scenario_comparison_subplots(df, output
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     # Add reference_mineral_short if missing
@@ -1034,7 +1187,7 @@ def plot_value_addition_simple_gdp_share_scenario_comparison_subplots(df, output
                 available_scenarios.append((scenario_key, scenario_name))
                 scenario_data[scenario_key] = scenario_data_filtered
         
-        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+        if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
             continue
         
         # First pass: find maximum x-value across all scenarios for consistent scaling
@@ -1064,7 +1217,7 @@ def plot_value_addition_simple_gdp_share_scenario_comparison_subplots(df, output
             max_x_value = max_x_value * 1.1
         
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         

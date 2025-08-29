@@ -33,7 +33,7 @@ from plot_emissions_water_all_countries import (
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
 from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
-from plot_supply_curves import create_supply_curves
+from plot_supply_curves import create_supply_curves, create_supply_curve_scenario_subplots, create_supply_curve_cumulative_costs
 from plot_production_differences import generate_essential_difference_plots
 from plot_revenue_differences import generate_essential_revenue_difference_plots
 
@@ -42,7 +42,7 @@ def run_plot_production(df, output_dir, config):
     goal_by_scenario = {
         'bau_2040': 'Business as Usual',
         'early_refining_2040': 'Early Refining', 
-        'precursor_2040': 'Precursor related product',
+        'precursor_2040': 'Precursor Product',
         '2022_baseline': 'Baseline'
     }
     return plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
@@ -220,7 +220,20 @@ def run_supply_curves(df, output_dir, config):
     
     print("Generating supply curve plots...")
     saved_paths = create_supply_curves(df, supply_curve_dir)
-    print(f"Supply curve plots completed. Generated {len(saved_paths)} plots in: {supply_curve_dir}")
+    
+    print("Generating scenario comparison supply curves...")
+    scenario_comparison_paths = create_supply_curve_scenario_subplots(df, supply_curve_dir)
+    
+    print("Generating cumulative cost supply curves...")
+    cumulative_cost_dir = os.path.join(supply_curve_dir, 'cumulative_costs')
+    cumulative_cost_paths = create_supply_curve_cumulative_costs(df, cumulative_cost_dir)
+    
+    total_paths = saved_paths + scenario_comparison_paths + cumulative_cost_paths
+    print(f"Supply curve plots completed. Generated {len(total_paths)} plots total:")
+    print(f"  - {len(saved_paths)} standard supply curves")
+    print(f"  - {len(scenario_comparison_paths)} scenario comparison plots (aggregated stages)")
+    print(f"  - {len(cumulative_cost_paths)} cumulative cost plots")
+    print(f"  - Saved in: {supply_curve_dir}")
 
 def run_production_differences(df, output_dir, config):
     """Generate production difference plots (Regional vs National)"""

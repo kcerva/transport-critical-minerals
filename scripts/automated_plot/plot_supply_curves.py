@@ -140,17 +140,33 @@ def plot_supply_curve_bars(df, tons_column, unit_cost_column, ax=None, sort=True
     bars = ax.bar(x_positions, heights, width=widths, color=bar_colors, 
                   align='edge', alpha=0.8, edgecolor='black', linewidth=0.5)
     
-    # Add country labels on bars (if not too small)
+    # Add country labels on bars (if not too small and wide enough)
     for i, (country, row) in enumerate(df_clean.iterrows()):
-        if row[tons_column] / total_production >= min_label_threshold:
+        production_fraction = row[tons_column] / total_production
+        bar_width = widths[i]
+        
+        # Only show label if bar meets both percentage AND minimum width thresholds
+        meets_percentage = production_fraction >= min_label_threshold
+        meets_width = bar_width >= (total_production * 0.02)  # At least 2% of total width
+        bar_height = heights[i]
+        meets_height = bar_height >= 500  # Minimum height of 500 USD/tonne for visibility
+        
+        if meets_percentage and meets_width and meets_height:
             x_center = x_positions[i] + widths[i] / 2
             y_center = heights[i] / 2
+            
+            # Use smaller font for smaller bars to reduce overlap
+            if production_fraction < 0.08:  # Less than 8% of total
+                fontsize = 7
+            else:
+                fontsize = 8
+                
             ax.text(x_center, y_center, country, ha='center', va='center', 
-                   fontsize=8, fontweight='bold', color='white')
+                   fontsize=fontsize, fontweight='bold', color='white')
     
     # Format axes
-    ax.set_xlabel('Cumulative Production (tonnes)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Unit Cost (USD/tonne)', fontsize=12, fontweight='bold')
+    ax.set_xlabel('Cumulative Export Production (tonnes)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Energy, transp and prod unit costs (USD/t)', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
     
     # Set x-axis to show cumulative production
@@ -380,8 +396,7 @@ def create_supply_curves(df, output_dir):
                         "production_transport_energy_unit_cost_usd_per_tonne",
                         ax=axes[i], 
                         sort=True, 
-                        color_map=global_country_color_map,
-                        price_line=avg_price
+                        color_map=global_country_color_map
                     )
                     
                     # Add processing type and scenario info to title
@@ -409,13 +424,7 @@ def create_supply_curves(df, output_dir):
                                         label=country)
                             )
                     
-                    # If there's a price line, add it to legend
-                    if avg_price is not None:
-                        from matplotlib.lines import Line2D
-                        legend_elements.append(
-                            Line2D([0], [0], color='red', linestyle='--', linewidth=2,
-                                   label=f'Market Price: ${avg_price:,.0f}/tonne')
-                        )
+                    # Price line removed per user request
                     
                     if legend_elements:
                         axes[i].legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), 
@@ -618,8 +627,7 @@ def create_supply_curves_by_scenario(df, output_dir):
                     "production_transport_energy_unit_cost_usd_per_tonne",
                     ax=axes[i], 
                     sort=True, 
-                    color_map=global_country_color_map,
-                    price_line=excel_price
+                    color_map=global_country_color_map
                 )
                 
                 # Get processing type for this stage
@@ -647,13 +655,7 @@ def create_supply_curves_by_scenario(df, output_dir):
                                     label=country)
                         )
                 
-                # Add price line to legend if available
-                if excel_price is not None:
-                    from matplotlib.lines import Line2D
-                    legend_elements.append(
-                        Line2D([0], [0], color='red', linestyle='--', linewidth=2,
-                               label=f'Market Price: ${excel_price:,.0f}/tonne')
-                    )
+                # Price line removed per user request
                 
                 if legend_elements:
                     axes[i].legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), 
@@ -669,6 +671,420 @@ def create_supply_curves_by_scenario(df, output_dir):
             
             saved_paths.append(filepath)
             print(f"✓ Saved scenario-based supply curve: {filename}")
+    
+    return saved_paths
+
+
+def create_supply_curve_scenario_subplots(df, output_dir):
+    """
+    Create supply curve plots with subplots comparing BAU, Early Refining, and Precursor scenarios.
+    
+    This creates one figure per mineral/constraint combination with 3 horizontal subplots
+    showing the different scenarios side by side for easy comparison.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The main dataset from all_data.xlsx
+    output_dir : str
+        Directory to save the plots
+    """
+    # Create a subdirectory for scenario comparison plots
+    scenario_output_dir = os.path.join(output_dir, 'scenario_comparison')
+    os.makedirs(scenario_output_dir, exist_ok=True)
+    
+    # Filter for relevant data using same approach as emissions plots
+    df_filtered = df[
+        (df["processing_stage"] > 0) &  # Only processed stages
+        (df["production_tonnes"] > 0) &  # Only countries with production
+        (df["production_transport_energy_unit_cost_usd_per_tonne"] > 0) &  # Only with cost data
+        (df["scenario"].str.contains("2040")) &  # Only 2040 scenarios
+        (
+            ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+        )
+    ].copy()
+    
+    if len(df_filtered) == 0:
+        print("Warning: No data available for supply curve scenario comparison")
+        return []
+    
+    saved_paths = []
+    
+    # Define scenario mapping with descriptive names showing all stages are aggregated
+    scenario_mapping = {
+        'bau_2040': 'Business as Usual',
+        'early_refining_2040': 'Early Refining', 
+        'precursor_2040': 'Precursor Product'
+    }
+    
+    # Get unique countries across all data for consistent coloring
+    all_countries = sorted(df_filtered["iso3"].unique())
+    global_country_color_map = create_country_color_map(all_countries)
+    
+    # Group by mineral and constraint
+    for mineral in reference_minerals:
+        mineral_data = df_filtered[df_filtered["reference_mineral"] == mineral]
+        
+        if len(mineral_data) == 0:
+            print(f"No data available for {mineral} supply curve scenarios")
+            continue
+            
+        for constraint in mineral_data["constraint"].unique():
+            constraint_data = mineral_data[mineral_data["constraint"] == constraint]
+            
+            # Get scenarios present in this constraint group
+            available_scenarios = []
+            scenario_data = {}
+            
+            for scenario_key, scenario_name in scenario_mapping.items():
+                scenario_data_filtered = constraint_data[constraint_data["scenario"].str.contains(scenario_key)]
+                if not scenario_data_filtered.empty:
+                    available_scenarios.append((scenario_key, scenario_name))
+                    scenario_data[scenario_key] = scenario_data_filtered
+            
+            if len(available_scenarios) < 1:  # Need at least 1 scenario to plot
+                continue
+            
+            # Create subplot figure with horizontal layout (1 row, n columns) with shared y-axis
+            fig, axes = plt.subplots(1, len(available_scenarios), figsize=(6 * len(available_scenarios), 8), sharex=False, sharey=True)
+            if len(available_scenarios) == 1:
+                axes = [axes]
+            
+            constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+            constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+            figure_title = f"{mineral.title()} Supply Curve Scenario Comparison — {constraint_type} {constraint_status}"
+            
+            # First pass: find maximum values across all scenarios for consistent scaling
+            max_production = 0
+            max_cost = 0
+            
+            for scenario_key, scenario_name in available_scenarios:
+                scenario_group = scenario_data[scenario_key]
+                
+                # Aggregate all stages for this scenario
+                country_data = scenario_group.groupby("iso3").agg({
+                    "production_tonnes": "sum",
+                    "production_transport_energy_unit_cost_usd_per_tonne": "mean"
+                }).reset_index()
+                
+                if not country_data.empty:
+                    max_production = max(max_production, country_data["production_tonnes"].sum())
+                    max_cost = max(max_cost, country_data["production_transport_energy_unit_cost_usd_per_tonne"].max())
+            
+            # Add padding to max values for better visualization
+            max_production = max_production * 1.1
+            max_cost = max_cost * 1.1
+            
+            # Plot each scenario
+            for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
+                ax = axes[i]
+                scenario_group = scenario_data[scenario_key]
+                
+                # Group by country and aggregate all stages
+                country_data = scenario_group.groupby("iso3").agg({
+                    "production_tonnes": "sum",
+                    "production_transport_energy_unit_cost_usd_per_tonne": "mean"
+                }).reset_index()
+                
+                country_data.set_index("iso3", inplace=True)
+                
+                if country_data.empty:
+                    ax.text(0.5, 0.5, 'No data available', ha='center', va='center', 
+                           transform=ax.transAxes, fontsize=14)
+                    ax.set_title(scenario_name, fontsize=14, fontweight='bold')
+                    continue
+                
+                # Create supply curve with higher threshold to reduce label overlap
+                plot_supply_curve_bars(
+                    country_data, 
+                    "production_tonnes", 
+                    "production_transport_energy_unit_cost_usd_per_tonne",
+                    ax=ax, 
+                    sort=True, 
+                    color_map=global_country_color_map,
+                    min_label_threshold=0.05  # Increase from 3% to 5% to reduce overlaps
+                )
+                
+                # Set consistent scales
+                ax.set_xlim(0, max_production)
+                ax.set_ylim(0, max_cost)
+                
+                # Get unique stages in this scenario data for subtitle
+                stages_in_scenario = sorted(scenario_group['processing_stage'].unique())
+                stages_str = ', '.join([f'{int(s)}' if s % 1 == 0 else f'{s:.1f}' for s in stages_in_scenario])
+                
+                # Format subplot with stage information - use two lines for better readability
+                ax.set_title(f'{scenario_name}\n(All Stages: {stages_str})', fontsize=12, fontweight='bold', pad=10, linespacing=1.5)
+                # Format x-axis with better number formatting
+                ax.set_xlabel('Cumulative Export Production (tonnes)', fontsize=11)
+                
+                # Format x-axis tick labels to avoid congestion
+                from matplotlib.ticker import FuncFormatter
+                def format_large_numbers(x, pos):
+                    if x >= 1e6:
+                        return f'{x/1e6:.1f}M'
+                    elif x >= 1e3:
+                        return f'{x/1e3:.0f}k'
+                    else:
+                        return f'{x:.0f}'
+                ax.xaxis.set_major_formatter(FuncFormatter(format_large_numbers))
+                if i == 0:  # Only first subplot gets y-label
+                    ax.set_ylabel('Energy, transp and prod unit costs (USD/t)', fontsize=12, fontweight='bold')
+                
+                # Add legend only to the last subplot
+                if i == len(available_scenarios) - 1:
+                    # Create country legend
+                    countries = sorted(country_data.index)
+                    legend_elements = []
+                    for country in countries:
+                        legend_elements.append(
+                            plt.Rectangle((0, 0), 1, 1, facecolor=global_country_color_map[country], 
+                                        label=country)
+                        )
+                    
+                    if legend_elements:
+                        ax.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), 
+                                loc='upper left', title='Countries', fontsize=10, title_fontsize=11)
+            
+            # Add main title with better positioning
+            fig.suptitle(figure_title, fontsize=16, fontweight='bold', y=0.95)
+            
+            # Adjust layout to provide space for legend and better title positioning
+            plt.tight_layout(rect=[0, 0.02, 0.85, 0.93])
+            
+            # Save figure
+            filename = f"{mineral}_{constraint}_scenario_comparison_supply_curves.png"
+            filepath = os.path.join(scenario_output_dir, filename)
+            fig.savefig(filepath, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            saved_paths.append(filepath)
+            
+            print(f"✓ Saved supply curve scenario comparison: {filename}")
+    
+    return saved_paths
+
+
+def create_supply_curve_cumulative_costs(df, output_dir):
+    """
+    Create supply curve plots with cumulative costs through the processing chain.
+    
+    This creates one figure per mineral/constraint combination with 3 horizontal subplots:
+    - BAU: Beneficiation stage only
+    - Early Refining: Cumulative costs up to Early refining stages
+    - Precursor: Cumulative costs through all stages
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The main dataset from all_data.xlsx
+    output_dir : str
+        Directory to save the plots
+    """
+    # Use the output directory directly (caller should provide cumulative_costs path if needed)
+    cumulative_output_dir = output_dir
+    os.makedirs(cumulative_output_dir, exist_ok=True)
+    
+    # Filter for relevant data
+    df_filtered = df[
+        (df["processing_stage"] > 0) &  # Only processed stages
+        (df["production_tonnes"] > 0) &  # Only countries with production
+        (df["production_transport_energy_unit_cost_usd_per_tonne"] > 0) &  # Only with cost data
+        (df["scenario"].str.contains("2040")) &  # Only 2040 scenarios
+        (
+            ((df["constraint"].str.contains("country")) & (df["scenario"].str.contains("mid_min"))) |
+            ((df["constraint"].str.contains("region")) & (df["scenario"].str.contains("mid_max")))
+        )
+    ].copy()
+    
+    if len(df_filtered) == 0:
+        print("Warning: No data available for cumulative cost supply curves")
+        return []
+    
+    saved_paths = []
+    
+    # Define scenario mapping and processing type inclusion
+    scenario_config = {
+        'bau_2040': {
+            'title': 'Business as Usual\n(Beneficiation stage)',
+            'included_types': ['Beneficiation'],
+            'target_type': 'Beneficiation'
+        },
+        'early_refining_2040': {
+            'title': 'Early Refining\n(Up to Early Refining stage)',
+            'included_types': ['Beneficiation', 'Early refining'],
+            'target_type': 'Early refining'
+        },
+        'precursor_2040': {
+            'title': 'Precursor Product\n(All stages)',
+            'included_types': ['Beneficiation', 'Early refining', 'Precursor related product'],
+            'target_type': 'Precursor related product'
+        }
+    }
+    
+    # Get unique countries for consistent coloring
+    all_countries = sorted(df_filtered["iso3"].unique())
+    global_country_color_map = create_country_color_map(all_countries)
+    
+    # Group by mineral and constraint
+    for mineral in reference_minerals:
+        mineral_data = df_filtered[df_filtered["reference_mineral"] == mineral]
+        
+        if len(mineral_data) == 0:
+            print(f"No data available for {mineral} cumulative cost curves")
+            continue
+            
+        for constraint in mineral_data["constraint"].unique():
+            constraint_data = mineral_data[mineral_data["constraint"] == constraint]
+            
+            # Check which scenarios are available
+            available_scenarios = []
+            for scenario_key in scenario_config.keys():
+                if not constraint_data[constraint_data["scenario"].str.contains(scenario_key)].empty:
+                    available_scenarios.append(scenario_key)
+            
+            if len(available_scenarios) < 1:
+                continue
+            
+            # Create subplot figure (1 row, 3 columns) with shared y-axes for easy comparison
+            fig, axes = plt.subplots(1, len(available_scenarios), 
+                                    figsize=(6 * len(available_scenarios), 8), 
+                                    sharex=False, sharey=True)
+            if len(available_scenarios) == 1:
+                axes = [axes]
+            
+            constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+            constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+            figure_title = f"{mineral.title()} - {constraint_type} {constraint_status}"
+            
+            # Plot each scenario
+            for i, scenario_key in enumerate(available_scenarios):
+                ax = axes[i]
+                config = scenario_config[scenario_key]
+                
+                # Get scenario data
+                scenario_data = constraint_data[constraint_data["scenario"].str.contains(scenario_key)]
+                
+                # Calculate cumulative costs for each country
+                country_cumulative_data = []
+                
+                for country in scenario_data["iso3"].unique():
+                    country_scenario_data = scenario_data[scenario_data["iso3"] == country]
+                    
+                    # Get production from the target processing type (use production_tonnes_for_costs)
+                    target_production = country_scenario_data[
+                        country_scenario_data["processing_type"] == config['target_type']
+                    ]["production_tonnes_for_costs"].sum()
+                    
+                    # Skip if no production at target stage
+                    if target_production == 0:
+                        continue
+                    
+                    # Calculate cumulative costs from all included processing types
+                    included_data = country_scenario_data[
+                        country_scenario_data["processing_type"].isin(config['included_types'])
+                    ]
+                    
+                    # Sum unit costs directly across included stages (following old new_bar_charts.py approach)
+                    if not included_data.empty:
+                        cumulative_unit_cost = 0
+                        for _, row in included_data.iterrows():
+                            stage_unit_cost = row["production_transport_energy_unit_cost_usd_per_tonne"]
+                            cumulative_unit_cost += stage_unit_cost
+                    else:
+                        continue
+                    
+                    country_cumulative_data.append({
+                        'iso3': country,
+                        'production_tonnes_for_costs': target_production,
+                        'cumulative_unit_cost': cumulative_unit_cost
+                    })
+                
+                if country_cumulative_data:
+                    # Create DataFrame for plotting
+                    plot_df = pd.DataFrame(country_cumulative_data)
+                    plot_df.set_index('iso3', inplace=True)
+                    
+                    # Create supply curve
+                    plot_supply_curve_bars(
+                        plot_df,
+                        "production_tonnes_for_costs",
+                        "cumulative_unit_cost",
+                        ax=ax,
+                        sort=True,
+                        color_map=global_country_color_map,
+                        min_label_threshold=0.05
+                    )
+                    
+                    # Set subplot title with two lines for better readability
+                    ax.set_title(config['title'], fontsize=12, fontweight='bold', pad=10, linespacing=1.5)
+                    
+                    # Format x-axis with better number formatting
+                    ax.set_xlabel('Cumulative Export Production (tonnes)', fontsize=11)
+                    
+                    # Format x-axis tick labels to avoid congestion
+                    from matplotlib.ticker import FuncFormatter
+                    def format_large_numbers(x, pos):
+                        if x >= 1e6:
+                            return f'{x/1e6:.1f}M'
+                        elif x >= 1e3:
+                            return f'{x/1e3:.0f}k'
+                        else:
+                            return f'{x:.0f}'
+                    ax.xaxis.set_major_formatter(FuncFormatter(format_large_numbers))
+                    
+                    if i == 0:  # Only first subplot gets y-label
+                        ax.set_ylabel('Energy, transp and prod unit costs (USD/t)', fontsize=12, fontweight='bold')
+                    
+                    # Let y-axis scale naturally to show all data
+                        
+                else:
+                    # Handle empty subplot with clear message
+                    ax.text(0.5, 0.5, 'No data available\nfor this scenario', ha='center', va='center',
+                           transform=ax.transAxes, fontsize=14, color='gray')
+                    ax.set_title(config['title'], fontsize=12, fontweight='bold', pad=10, linespacing=1.5)
+                    ax.set_xlabel('Cumulative Export Production (tonnes)', fontsize=11)
+                    if i == 0:
+                        ax.set_ylabel('Energy, transp and prod unit costs (USD/t)', fontsize=12, fontweight='bold')
+                    # Empty subplot - no y-axis limit needed
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+                    ax.spines['bottom'].set_visible(False)
+                    ax.spines['left'].set_visible(False)
+                
+                # Add legend only to the last subplot
+                if i == len(available_scenarios) - 1:
+                    if country_cumulative_data:
+                        countries = sorted([d['iso3'] for d in country_cumulative_data])
+                        legend_elements = []
+                        for country in countries:
+                            if country in global_country_color_map:
+                                legend_elements.append(
+                                    plt.Rectangle((0, 0), 1, 1, 
+                                                facecolor=global_country_color_map[country],
+                                                label=country)
+                                )
+                        
+                        if legend_elements:
+                            ax.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1),
+                                    loc='upper left', title='Countries', fontsize=10, title_fontsize=11)
+            
+            # Add main title
+            fig.suptitle(figure_title, fontsize=16, fontweight='bold', y=0.95)
+            
+            # Adjust layout
+            plt.tight_layout(rect=[0, 0.02, 0.85, 0.93])
+            
+            # Save figure
+            filename = f"{mineral}_{constraint}_cumulative_cost_supply_curves.png"
+            filepath = os.path.join(cumulative_output_dir, filename)
+            fig.savefig(filepath, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            saved_paths.append(filepath)
+            
+            print(f"✓ Saved cumulative cost supply curve: {filename}")
     
     return saved_paths
 

@@ -297,7 +297,7 @@ def add_goal_comparison_section(doc, df_country, chart_paths):
     try:
         doc.add_paragraph(
             "This section compares the three 2040 development goals: Business as Usual (BAU), "
-            "Early Refining, and Product Manufacturing scenarios. These comparisons show "
+            "Early Refining, and Precursor Product scenarios. These comparisons show "
             "how different strategic objectives lead to varying outcomes in production, revenue, "
             "water consumption, and CO2 emissions."
         )

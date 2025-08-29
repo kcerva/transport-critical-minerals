@@ -22,9 +22,9 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         if 'bau_2040' in scenario:
             return "Business as Usual"
         elif 'early_refining_2040' in scenario:
-            return "Early Processing"
+            return "Early Refining"
         elif 'precursor_2040' in scenario:
-            return "Product Manufacturing"
+            return "Precursor Product"
         elif '2022_baseline' in scenario:
             return "Baseline"
         else:
@@ -34,8 +34,8 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         """Map goal to expected processing_type"""
         goal_processing_map = {
             'Business as Usual': 'Beneficiation',
-            'Early Processing': 'Early refining', 
-            'Product Manufacturing': 'Precursor related product',
+            'Early Refining': 'Early refining', 
+            'Precursor Product': 'Precursor related product',
             'Baseline': None  # For baseline, show all processing types
         }
         return goal_processing_map.get(goal)
@@ -80,6 +80,27 @@ def plot_production_by_country_all_constraints(df, output_dir, goal_by_scenario)
         constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
         constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
         figure_title = f"{constraint_type} {constraint_status} ({scenario_clean})"
+
+        # Calculate max_x_value for consistent scaling
+        max_x_value = 0
+        for year_val in years:
+            group_y = group_g[group_g["year"] == year_val]
+            grouped = group_y.groupby(["iso3", "reference_mineral"])["production_million_tonnes"].sum().reset_index()
+            if not grouped.empty:
+                pivot = grouped.pivot_table(
+                    index="iso3",
+                    columns="reference_mineral",
+                    values="production_million_tonnes",
+                    fill_value=0
+                )
+                if not pivot.empty:
+                    row_totals = pivot.sum(axis=1)
+                    if len(row_totals) > 0:
+                        max_x_value = max(max_x_value, row_totals.max())
+        
+        # Add 10% padding
+        if max_x_value > 0:
+            max_x_value = max_x_value * 1.1
 
         for ax, year_val in zip(axes, years):
             # Since we already filtered by goal-specific processing types, 
@@ -169,8 +190,8 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing', 
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining', 
+        'precursor_2040': 'Precursor Product'
     }
     
     # Apply scenario processing type filtering like in the main function
@@ -211,7 +232,7 @@ def plot_production_scenario_comparison_subplots(df, output_dir):
             continue
             
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         
@@ -339,8 +360,8 @@ def plot_production_processing_focus_subplots(df, output_dir):
     # Define scenario mapping
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing', 
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining', 
+        'precursor_2040': 'Precursor Product'
     }
     
     saved_paths = []
@@ -364,7 +385,7 @@ def plot_production_processing_focus_subplots(df, output_dir):
             continue
             
         # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 8 * len(available_scenarios)), sharex=False)
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
         if len(available_scenarios) == 1:
             axes = [axes]
         

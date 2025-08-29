@@ -27,8 +27,8 @@ def create_country_document(country_name, iso3):
     doc.add_heading('Executive Summary', level=1)
     doc.add_paragraph(
         f'This report analyses strategic development pathways for critical mineral processing in {country_name}. '
-        f'It examines three development approaches (Business as Usual, Early Processing, and '
-        f'Product Manufacturing) under different policy scenarios (National Focus vs Regional Integration) and with or without environmental constraints'
+        f'It examines three development approaches (Business as Usual, Early Refining, and '
+        f'Precursor Product) under different policy scenarios (National Focus vs Regional Integration) and with or without environmental constraints'
         f'to help inform strategic decision-making.'
     )
     doc.add_page_break()
@@ -136,8 +136,8 @@ def add_glossary_section(doc):
     
     glossary_items = [
         ('Business as Usual (BAU)', 'Continuation of current mineral extraction practices with minimal processing investment.'),
-        ('Early Processing', 'Reaching intermediate or full mineral refining capabilities usable in multiple industries.'),
-        ('Product Manufacturing', 'Manufacturing of products which are inputs to battery precursor manufacturing.'),
+        ('Early Refining', 'Reaching intermediate or full mineral refining capabilities usable in multiple industries.'),
+        ('Precursor Product', 'Manufacturing of products which are inputs to battery precursor manufacturing.'),
         ('National Focus', 'Policy approach prioritising domestic industry development.'),
         ('Regional Integration', 'Policy approach emphasising cooperation and trade within the 14 African countries in the study.'),
         ('Environmentally Constrained vs Unconstrained', 'Whether policies include environmental constraints related to areas with biodiversity or future water stress or operate with no restrictions.'),
@@ -221,9 +221,9 @@ def format_scenario_name(scenario):
         if 'bau' in scenario.lower():
             return '2040 Business as Usual'
         elif 'early_refining' in scenario.lower():
-            return '2040 Early Processing'
+            return '2040 Early Refining'
         elif 'precursor' in scenario.lower():
-            return '2040 Product Manufacturing'
+            return '2040 Precursor Product'
     
     # Handle other scenarios
     parts = scenario.split('_')

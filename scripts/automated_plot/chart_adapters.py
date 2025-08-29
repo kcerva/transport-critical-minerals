@@ -26,8 +26,8 @@ def adapt_production_charts(df_country, iso3, temp_dir):
         # Also create traditional charts as backup
         goal_by_scenario = {
             'bau_2040': 'Business as Usual',
-            'early_refining_2040': 'Early Processing', 
-            'precursor_2040': 'Product Manufacturing',
+            'early_refining_2040': 'Early Refining', 
+            'precursor_2040': 'Precursor Product',
             '2022_baseline': 'Baseline'
         }
         traditional_paths = plot_production_by_country_all_constraints(df_country, country_output_dir, goal_by_scenario)
@@ -376,7 +376,7 @@ def create_production_subplot_charts(df_country, output_dir, iso3):
                           'early_refining_2040_mid_min_threshold_metal_tons',
                           'precursor_2040_mid_min_threshold_metal_tons']
         
-        scenario_titles = ['2040 Business as Usual', '2040 Early Processing', '2040 Product Manufacturing']
+        scenario_titles = ['2040 Business as Usual', '2040 Early Refining', '2040 Precursor Product']
         
         # Process each scenario
         for i, (scenario, title) in enumerate(zip(scenarios_2040, scenario_titles)):
@@ -491,7 +491,7 @@ def create_comprehensive_policy_comparison(df_country, output_dir, iso3):
                         fontsize=16, fontweight='bold', y=0.98)
             
             scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
-            scenario_labels = ['Business as Usual', 'Early Processing', 'Product\nManufacturing']
+            scenario_labels = ['Business as Usual', 'Early Refining', 'Precursor\nProduct']
             
             for i, (scenario, label) in enumerate(zip(scenarios, scenario_labels)):
                 scenario_data = df_2040[df_2040['scenario'].str.contains(scenario)]
@@ -616,7 +616,7 @@ def create_improved_goal_comparison_charts(df_country, output_dir, iso3):
                 
                 # Extract scenario bases and calculate error bars
                 scenario_bases = ['bau_2040', 'early_refining_2040', 'precursor_2040']
-                scenario_labels = ['Business as Usual', 'Early Processing', 'Product Manufacturing']
+                scenario_labels = ['Business as Usual', 'Early Refining', 'Precursor Product']
                 
                 x_pos = np.arange(len(scenario_bases))
                 mid_values = []
@@ -698,7 +698,7 @@ def create_production_subplot_charts_with_errorbars(df_country, output_dir, iso3
         
         # Define the goal types and their display names
         goals = ['bau', 'early_refining', 'precursor']
-        goal_titles = ['Business as Usual', 'Early Processing', 'Product Manufacturing']
+        goal_titles = ['Business as Usual', 'Early Refining', 'Precursor Product']
         
         # Create figure with subplots for each goal (3 rows for better comparison)
         fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)

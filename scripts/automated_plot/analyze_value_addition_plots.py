@@ -96,8 +96,8 @@ def analyze_plots():
     
     scenario_mapping = {
         'bau_2040': 'Business as Usual',
-        'early_refining_2040': 'Early Processing',
-        'precursor_2040': 'Product Manufacturing'
+        'early_refining_2040': 'Early Refining',
+        'precursor_2040': 'Precursor Product'
     }
     
     for scenario_key, scenario_name in scenario_mapping.items():
