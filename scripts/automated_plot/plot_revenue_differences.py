@@ -696,9 +696,9 @@ def generate_essential_revenue_difference_plots(output_dir: str):
         diff_df = calculate_regional_vs_national_revenue_difference(df, scenario_prefix, 'constrained')
         if not diff_df.empty:
             if scenario_prefix == 'early_refining_2040':
-                scenario_name = 'Early Processing 2040'
+                scenario_name = 'Early Refining 2040'
             else:  # precursor_2040
-                scenario_name = 'Product Manufacturing 2040'
+                scenario_name = 'Precursor Product 2040'
             reg_nat_constrained_scenarios[scenario_name] = diff_df
     
     if reg_nat_constrained_scenarios:
@@ -725,9 +725,9 @@ def generate_essential_revenue_difference_plots(output_dir: str):
         diff_df = calculate_regional_vs_national_revenue_difference(df, scenario_prefix, 'unconstrained')
         if not diff_df.empty:
             if scenario_prefix == 'early_refining_2040':
-                scenario_name = 'Early Processing 2040'
+                scenario_name = 'Early Refining 2040'
             else:  # precursor_2040
-                scenario_name = 'Product Manufacturing 2040'
+                scenario_name = 'Precursor Product 2040'
             reg_nat_unconstrained_scenarios[scenario_name] = diff_df
     
     if reg_nat_unconstrained_scenarios:
@@ -756,9 +756,9 @@ def generate_essential_revenue_difference_plots(output_dir: str):
             if scenario_prefix == 'bau_2040':
                 scenario_name = 'BAU 2040'
             elif scenario_prefix == 'early_refining_2040':
-                scenario_name = 'Early Processing 2040'
+                scenario_name = 'Early Refining 2040'
             else:  # precursor_2040
-                scenario_name = 'Product Manufacturing 2040'
+                scenario_name = 'Precursor Product 2040'
             cons_uncons_national_scenarios[scenario_name] = diff_df
     
     if cons_uncons_national_scenarios:
@@ -787,9 +787,9 @@ def generate_essential_revenue_difference_plots(output_dir: str):
             if scenario_prefix == 'bau_2040':
                 scenario_name = 'BAU 2040'
             elif scenario_prefix == 'early_refining_2040':
-                scenario_name = 'Early Processing 2040'
+                scenario_name = 'Early Refining 2040'
             else:  # precursor_2040
-                scenario_name = 'Product Manufacturing 2040'
+                scenario_name = 'Precursor Product 2040'
             cons_uncons_regional_scenarios[scenario_name] = diff_df
     
     if cons_uncons_regional_scenarios:

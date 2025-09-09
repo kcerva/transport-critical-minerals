@@ -23,14 +23,7 @@ def create_country_document(country_name, iso3):
     # Add glossary section
     add_glossary_section(doc)
     
-    # Add executive summary placeholder
-    doc.add_heading('Executive Summary', level=1)
-    doc.add_paragraph(
-        f'This report analyses strategic development pathways for critical mineral processing in {country_name}. '
-        f'It examines three development approaches (Business as Usual, Early Refining, and '
-        f'Precursor Product) under different policy scenarios (National Focus vs Regional Integration) and with or without environmental constraints'
-        f'to help inform strategic decision-making.'
-    )
+    # Executive summary will be added by generate_country_docx function
     doc.add_page_break()
     
     return doc
@@ -85,7 +78,10 @@ def add_table_from_dataframe(doc, df, title=None, max_width_inches=6.5, interpre
                 # Don't format numbers that appear to be years
                 if ('year' in column_name or 'year' in original_column_name or 
                     (isinstance(value, (int, float)) and 1900 <= value <= 2100)):
-                    row_cells[i].text = str(int(value)) if value.is_integer() else f"{value:.0f}"
+                    if isinstance(value, int):
+                        row_cells[i].text = str(value)
+                    else:  # float
+                        row_cells[i].text = str(int(value)) if value.is_integer() else f"{value:.0f}"
                 else:
                     row_cells[i].text = format_number_for_display(value)
             else:
@@ -143,7 +139,6 @@ def add_glossary_section(doc):
         ('Environmentally Constrained vs Unconstrained', 'Whether policies include environmental constraints related to areas with biodiversity or future water stress or operate with no restrictions.'),
         ('Metal Content', 'The amount of pure metal that is extracted from raw mineral ores. For graphite, it is not metal, but mineral content'),
         ('Processing Stage', 'Level of value addition: the higher the stage, the higher the processing.'),
-        ('Value Addition', 'Economic benefit gained from processing raw minerals into higher-value products.')
     ]
     
     for term, definition in glossary_items:

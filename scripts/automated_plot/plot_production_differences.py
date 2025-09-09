@@ -261,7 +261,7 @@ def generate_constrained_vs_unconstrained_plots(df, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     
     scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
-    scenario_labels = ['BAU 2040', 'Early Processing 2040', 'Product Manufacturing 2040']
+    scenario_labels = ['BAU 2040', 'Early Refining 2040', 'Precursor Product 2040']
     policy_types = ['country', 'region']
     policy_labels = ['National Focus', 'Regional Integration']
     
@@ -386,7 +386,7 @@ def generate_regional_vs_national_plots(df, output_dir):
     
     # Remove BAU since Regional vs National is always zero for BAU
     scenarios = ['early_refining_2040', 'precursor_2040']
-    scenario_labels = ['Early Processing 2040', 'Product Manufacturing 2040']
+    scenario_labels = ['Early Refining 2040', 'Precursor Product 2040']
     
     # Generate plots for both constrained and unconstrained
     for constraint_level in ['constrained', 'unconstrained']:
@@ -508,7 +508,7 @@ def generate_mineral_breakdown_plots(df, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     
     scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
-    scenario_labels = ['BAU 2040', 'Early Processing 2040', 'Product Manufacturing 2040']
+    scenario_labels = ['BAU 2040', 'Early Refining 2040', 'Precursor Product 2040']
     all_processing_types = ["Beneficiation", "Early refining", "Precursor related product"]
     
     # Generate for both comparison types
@@ -723,7 +723,7 @@ def generate_beneficiation_only_plots(df, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     
     scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
-    scenario_labels = ['BAU 2040', 'Early Processing 2040', 'Product Manufacturing 2040']
+    scenario_labels = ['BAU 2040', 'Early Refining 2040', 'Precursor Product 2040']
     
     # Two policy types to generate
     policy_configs = [

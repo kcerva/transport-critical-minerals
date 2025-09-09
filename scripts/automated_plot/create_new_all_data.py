@@ -26,41 +26,34 @@ def create_all_data_from_combined_transport_file(input_file_path, output_file_pa
     print(f"Combined data shape: {df_list.shape}")
     print(f"Columns: {list(df_list.columns)}")
     
-    # Unit cost calculations - temporarily without energy (to be restored when energy results are ready)
+    # Unit cost calculations - now including energy components
     unit_costs = [
                     "export_transport_cost_usd_per_tonne",
                     "import_transport_cost_usd_per_tonne",
                     "production_cost_usd_per_tonne",
-                    # TODO: Restore when energy results are ready
-                    # "energy_opex_per_tonne",
-                    # "energy_investment_usd_per_tonne"
+                    "energy_opex_per_tonne",
+                    "energy_investment_usd_per_tonne"
                 ]
     
-    # Calculate total unit cost - temporarily without energy components
-    df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z for x,y,z in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
-                                                                                              df_list[unit_costs[2]])]
-    # TODO: Restore when energy results are ready
-    # df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
-    #                                                                                                     df_list[unit_costs[2]], df_list[unit_costs[3]],
-    #                                                                                                     df_list[unit_costs[4]])]
+    # Calculate total unit cost - now including energy components
+    df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
+                                                                                                         df_list[unit_costs[2]], df_list[unit_costs[3]],
+                                                                                                         df_list[unit_costs[4]])]
     df_list['production_transport_energy_unit_cost_usd_per_tonne'] = df_list['production_transport_energy_unit_cost_usd_per_tonne'].fillna(0)
 
-    # Total cost calculations - temporarily without energy (to be restored when energy results are ready)
+    # Total cost calculations - now including energy components
     costs = [
                 "export_transport_cost_usd",
                 "import_transport_cost_usd",
                 "production_cost_usd",
-                # TODO: Restore when energy results are ready
-                # "energy_opex",
-                # "energy_investment_usd"
+                "energy_opex",
+                "energy_investment_usd"
             ]
 
-    # Compute total cost - temporarily without energy components
-    df_list["all_cost_usd"] = [x+y+z for x,y,z in zip(df_list[costs[0]],df_list[costs[1]], df_list[costs[2]])]
-    # TODO: Restore when energy results are ready
-    # df_list["all_cost_usd"] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[costs[0]],df_list[costs[1]],
-    #                                                                                                     df_list[costs[2]], df_list[costs[3]],
-    #                                                                                                     df_list[costs[4]])]
+    # Compute total cost - now including energy components
+    df_list["all_cost_usd"] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[costs[0]],df_list[costs[1]],
+                                                                   df_list[costs[2]], df_list[costs[3]],
+                                                                   df_list[costs[4]])]
 
     # Fix processing_type classifications if needed
     print("Checking processing_type classifications...")
@@ -106,15 +99,14 @@ def create_all_data_from_combined_transport_file(input_file_path, output_file_pa
 
 def create_unit_costs_file(df_list, output_data_path):
     """
-    Create unit_costs.xlsx file - temporarily without energy (to be restored when energy results are ready)
+    Create unit_costs.xlsx file - now including energy components
     """
     unit_costs = [
                     "export_transport_cost_usd_per_tonne",
                     "import_transport_cost_usd_per_tonne", 
                     "production_cost_usd_per_tonne",
-                    # TODO: Restore when energy results are ready
-                    # "energy_opex_per_tonne",
-                    # "energy_investment_usd_per_tonne"
+                    "energy_opex_per_tonne",
+                    "energy_investment_usd_per_tonne"
                 ]
     
     uc_list = df_list[["scenario", "reference_mineral", "iso3", 'processing_type',
@@ -130,10 +122,8 @@ def create_unit_costs_file(df_list, output_data_path):
     # - Use 'first' if a unit cost is expected to be constant within a group
     # - Use 'sum' for transport costs (since they can vary by country)
 
-    agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne"]}  # Transport costs
-    # TODO: Restore when energy results are ready
-    # agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne",
-    #                                    "energy_opex_per_tonne", "energy_investment_usd_per_tonne"]}  # If cost is different per country
+    agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne",
+                                       "energy_opex_per_tonne", "energy_investment_usd_per_tonne"]}  # Transport and energy costs
     agg_dict["production_cost_usd_per_tonne"] = 'first'  
 
     # Aggregate data
@@ -162,8 +152,8 @@ def main():
     # Set paths
     output_data_path = config['paths']['results']
     
-    # Input file - the new combined_transport_totals_by_stage.xlsx (without energy for now)
-    input_file = os.path.join(output_data_path, "result_summaries", "combined_transport_totals_by_stage.xlsx")
+    # Input file - using the new energy_transport_totals_by_stage.xlsx with updated data
+    input_file = os.path.join(output_data_path, "result_summaries", "energy_transport_totals_by_stage.xlsx")
     
     # Output file - the new all_data.xlsx 
     output_file = os.path.join(output_data_path, "all_data.xlsx")

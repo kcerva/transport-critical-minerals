@@ -6,6 +6,13 @@ from plot_gdp_share_by_country_all_constraints import plot_gdp_share_by_country_
 from plot_emissions_water_all_countries import plot_emissions_by_country_all_constraints, plot_water_by_country_all_constraints
 from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
 
+# Try to import difference plotting functions if they exist
+try:
+    from plot_production_differences import calculate_regional_vs_national_difference, plot_production_difference_bars
+    from plot_revenue_differences import calculate_revenue_differences, plot_revenue_difference_bars
+except ImportError:
+    print("Warning: Difference plotting modules not found. Some charts may not be generated.")
+
 def adapt_production_charts(df_country, iso3, temp_dir):
     """Adapter for production charts - creates improved subplot comparisons"""
     try:
@@ -147,59 +154,10 @@ def adapt_goal_comparison_charts(df_country, iso3, temp_dir):
         improved_paths = create_improved_goal_comparison_charts(df_country, country_output_dir, iso3)
         saved_paths.extend(improved_paths)
         
-        # Production goal comparison
-        production_paths = plot_goal_comparisons_2040(
-            df_country, 
-            country_output_dir, 
-            metric_column="production_tonnes",
-            metric_title="Production",
-            metric_units="kt",
-            country_iso3=iso3
-        )
-        saved_paths.extend(production_paths)
-        
-        # Production by processing type goal comparison
-        processing_paths = plot_production_goal_comparison_by_processing_type(
-            df_country, 
-            country_output_dir, 
-            country_iso3=iso3
-        )
-        saved_paths.extend(processing_paths)
-        
-        # Revenue goal comparison
-        revenue_paths = plot_goal_comparisons_2040(
-            df_country,
-            country_output_dir,
-            metric_column="revenue_usd",
-            metric_title="Revenue",
-            metric_units="Million USD",
-            country_iso3=iso3
-        )
-        saved_paths.extend(revenue_paths)
-        
-        # Water use goal comparison
-        water_paths = plot_goal_comparisons_2040(
-            df_country,
-            country_output_dir,
-            metric_column="water_usage_m3",
-            metric_title="Water Usage",
-            metric_units="Million m³",
-            country_iso3=iso3
-        )
-        saved_paths.extend(water_paths)
-        
-        # CO2 emissions goal comparison (combined transport + energy)
-        df_co2 = df_country.copy()
-        df_co2["total_co2_tonnes"] = (df_co2["transport_total_tonsCO2eq"] + df_co2["energy_tonsCO2eq"]) / 1000
-        co2_paths = plot_goal_comparisons_2040(
-            df_co2,
-            country_output_dir,
-            metric_column="total_co2_tonnes",
-            metric_title="Total CO2 Emissions", 
-            metric_units="kt CO2",
-            country_iso3=iso3
-        )
-        saved_paths.extend(co2_paths)
+        # Create consolidated goal comparison chart (all metrics in one figure)
+        consolidated_path = create_consolidated_goal_comparison(df_country, country_output_dir, iso3)
+        if consolidated_path:
+            saved_paths.append(consolidated_path)
         
         return saved_paths
     except Exception as e:
@@ -494,23 +452,38 @@ def create_comprehensive_policy_comparison(df_country, output_dir, iso3):
             scenario_labels = ['Business as Usual', 'Early Refining', 'Precursor\nProduct']
             
             for i, (scenario, label) in enumerate(zip(scenarios, scenario_labels)):
-                scenario_data = df_2040[df_2040['scenario'].str.contains(scenario)]
+                # Use correct scenario variants for proper comparison
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  # For country constraints
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   # For region constraints
                 
-                if scenario_data.empty:
+                # National approaches (use country scenario)
+                national_constrained = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_constrained')
+                ][metric_col].sum() / divisor
+                
+                national_open = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_unconstrained')
+                ][metric_col].sum() / divisor
+                
+                # Regional approaches (use region scenario)
+                regional_constrained = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_constrained')
+                ][metric_col].sum() / divisor
+                
+                regional_open = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_unconstrained')
+                ][metric_col].sum() / divisor
+                
+                # Check if we have any data
+                if (national_constrained == 0 and national_open == 0 and 
+                    regional_constrained == 0 and regional_open == 0):
                     axes[i].text(0.5, 0.5, 'No Data', ha='center', va='center', transform=axes[i].transAxes)
                     axes[i].set_title(label)
                     continue
-                
-                # Compare national vs regional for both constrained and unconstrained
-                comparison_data = []
-                
-                # National approaches (country_constrained, country_unconstrained)
-                national_constrained = scenario_data[scenario_data['constraint'] == 'country_constrained'][metric_col].sum() / divisor
-                national_open = scenario_data[scenario_data['constraint'] == 'country_unconstrained'][metric_col].sum() / divisor
-                
-                # Regional approaches (region_constrained, region_unconstrained)
-                regional_constrained = scenario_data[scenario_data['constraint'] == 'region_constrained'][metric_col].sum() / divisor
-                regional_open = scenario_data[scenario_data['constraint'] == 'region_unconstrained'][metric_col].sum() / divisor
                 
                 # Create grouped bar chart
                 x = np.arange(2)  # Two groups: Environmentally Constrained, Environmentally Unconstrained
@@ -832,3 +805,1150 @@ def create_production_subplot_charts_with_errorbars(df_country, output_dir, iso3
         traceback.print_exc()
     
     return saved_paths
+
+def create_production_difference_charts(df_country, output_dir, iso3):
+    """Create production charts comparing all four constraint combinations for a country"""
+    saved_paths = []
+    
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        from plot_utils import get_processing_type_colors
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios
+        df_2040 = df_country[df_country['scenario'].str.contains('2040')].copy()
+        
+        if df_2040.empty:
+            return saved_paths
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['Business as Usual', 'Early Refining', 'Precursor Product']
+        
+        # Create figure with subplots for each scenario
+        fig, axes = plt.subplots(3, 1, figsize=(14, 15))
+        fig.suptitle(f'Production by Policy Approach\n{get_country_name(iso3)}', 
+                     fontsize=16, fontweight='bold', y=0.98)
+        
+        constraints = ['country_constrained', 'country_unconstrained', 'region_constrained', 'region_unconstrained']
+        constraint_labels = ['National\nConstrained', 'National\nUnconstrained', 'Regional\nConstrained', 'Regional\nUnconstrained']
+        
+        for i, (scenario, label) in enumerate(zip(scenarios, scenario_labels)):
+            # Use correct scenario variants for proper comparison
+            scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  # For country constraints
+            scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   # For region constraints
+            
+            # Get production by constraint and processing type (exclude Metal content)
+            production_data = []
+            
+            # Country constrained (use country scenario)
+            constraint_data = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_constrained') & 
+                (df_2040['processing_type'] != 'Metal content')
+            ]
+            constraint_prod = constraint_data.groupby('processing_type')['production_tonnes'].sum() / 1000
+            production_data.append(constraint_prod)
+            
+            # Country unconstrained (use country scenario)
+            constraint_data = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_unconstrained') & 
+                (df_2040['processing_type'] != 'Metal content')
+            ]
+            constraint_prod = constraint_data.groupby('processing_type')['production_tonnes'].sum() / 1000
+            production_data.append(constraint_prod)
+            
+            # Region constrained (use region scenario)
+            constraint_data = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_constrained') & 
+                (df_2040['processing_type'] != 'Metal content')
+            ]
+            constraint_prod = constraint_data.groupby('processing_type')['production_tonnes'].sum() / 1000
+            production_data.append(constraint_prod)
+            
+            # Region unconstrained (use region scenario)
+            constraint_data = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_unconstrained') & 
+                (df_2040['processing_type'] != 'Metal content')
+            ]
+            constraint_prod = constraint_data.groupby('processing_type')['production_tonnes'].sum() / 1000
+            production_data.append(constraint_prod)
+            
+            # Get all unique processing types
+            all_proc_types = sorted(set().union(*[set(d.index) for d in production_data if not d.empty]))
+            
+            if not all_proc_types:
+                axes[i].text(0.5, 0.5, 'No Production Data', ha='center', va='center', transform=axes[i].transAxes)
+                axes[i].set_title(label)
+                continue
+            
+            # Create grouped bar chart
+            x = np.arange(len(constraints))
+            width = 0.8 / len(all_proc_types)
+            
+            # Plot bars for each processing type
+            for j, proc_type in enumerate(all_proc_types):
+                values = [d.get(proc_type, 0) if not d.empty else 0 for d in production_data]
+                color = get_processing_type_colors().get(proc_type, '#808080')
+                offset = (j - len(all_proc_types)/2 + 0.5) * width
+                bars = axes[i].bar(x + offset, values, width, label=proc_type, color=color, alpha=0.8)
+                
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0.5:  # Only label if significant
+                        axes[i].text(bar.get_x() + bar.get_width()/2., height,
+                                   f'{height:.0f}', ha='center', va='bottom', fontsize=8)
+            
+            axes[i].set_title(f'{label}', fontweight='bold', fontsize=12)
+            axes[i].set_ylabel('Production (kt)', fontweight='bold')
+            axes[i].set_xticks(x)
+            axes[i].set_xticklabels(constraint_labels)
+            axes[i].grid(axis='y', alpha=0.3)
+            
+            # Add legend only to first subplot
+            if i == 0:
+                axes[i].legend(title='Processing Type', bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'production_constraint_comparison.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        saved_paths.append(output_path)
+        
+        # Create a simplified total production comparison
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        fig.suptitle(f'Total Production by Policy Approach\n{get_country_name(iso3)}', 
+                     fontsize=14, fontweight='bold')
+        
+        for i, (scenario, label) in enumerate(zip(scenarios, scenario_labels)):
+            # Use correct scenario variants for proper comparison
+            scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  # For country constraints
+            scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   # For region constraints
+            
+            # Calculate total production for each constraint using correct scenarios
+            totals = []
+            
+            # Country constrained (use country scenario)
+            country_constrained = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_constrained')
+            ]['production_tonnes'].sum() / 1000
+            totals.append(country_constrained)
+            
+            # Country unconstrained (use country scenario)
+            country_unconstrained = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_unconstrained')
+            ]['production_tonnes'].sum() / 1000
+            totals.append(country_unconstrained)
+            
+            # Region constrained (use region scenario)
+            region_constrained = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_constrained')
+            ]['production_tonnes'].sum() / 1000
+            totals.append(region_constrained)
+            
+            # Region unconstrained (use region scenario) 
+            region_unconstrained = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_unconstrained')
+            ]['production_tonnes'].sum() / 1000
+            totals.append(region_unconstrained)
+            
+            # Check if we have any data
+            if all(t == 0 for t in totals):
+                axes[i].text(0.5, 0.5, 'No Data', ha='center', va='center', transform=axes[i].transAxes)
+                axes[i].set_title(label)
+                continue
+            
+            # Color bars differently for National vs Regional
+            colors = ['#1f77b4', '#1f77b4', '#ff7f0e', '#ff7f0e']  # Blue for National, Orange for Regional
+            
+            # Plot bars individually with different alphas
+            bars = []
+            alphas = [0.6, 1.0, 0.6, 1.0]  # Lighter for constrained, darker for unconstrained
+            for j, (color, alpha, total) in enumerate(zip(colors, alphas, totals)):
+                bar = axes[i].bar(j, total, color=color, alpha=alpha)
+                bars.extend(bar)
+            
+            # Add value labels
+            for bar, val in zip(bars, totals):
+                if val > 0:
+                    axes[i].text(bar.get_x() + bar.get_width()/2., val,
+                               f'{val:.0f}', ha='center', va='bottom', fontweight='bold')
+            
+            axes[i].set_title(label, fontweight='bold')
+            axes[i].set_ylabel('Total Production (kt)' if i == 0 else '', fontweight='bold')
+            axes[i].set_xticks(range(len(constraints)))
+            axes[i].set_xticklabels(constraint_labels, rotation=45, ha='right')
+            axes[i].grid(axis='y', alpha=0.3)
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'production_total_comparison.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        saved_paths.append(output_path)
+        
+    except Exception as e:
+        print(f"Error creating production comparison charts: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return saved_paths
+
+def create_revenue_difference_charts(df_country, output_dir, iso3):
+    """Create revenue charts comparing all four constraint combinations for a country"""
+    saved_paths = []
+    
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios
+        df_2040 = df_country[df_country['scenario'].str.contains('2040')].copy()
+        
+        if df_2040.empty:
+            return saved_paths
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['Business as Usual', 'Early Refining', 'Precursor Product']
+        
+        constraints = ['country_constrained', 'country_unconstrained', 'region_constrained', 'region_unconstrained']
+        constraint_labels = ['National\nConstrained', 'National\nUnconstrained', 'Regional\nConstrained', 'Regional\nUnconstrained']
+        
+        # Create figure with subplots for absolute values
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        fig.suptitle(f'Revenue by Policy Approach\n{get_country_name(iso3)}', 
+                     fontsize=14, fontweight='bold')
+        
+        for i, (scenario, label) in enumerate(zip(scenarios, scenario_labels)):
+            # Use correct scenario variants for proper comparison
+            scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  # For country constraints
+            scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   # For region constraints
+            
+            # Calculate revenue for each constraint using correct scenarios
+            revenues = []
+            
+            # Country constrained (use country scenario)
+            country_constrained = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_constrained')
+            ]['revenue_usd'].sum() / 1e6
+            revenues.append(country_constrained)
+            
+            # Country unconstrained (use country scenario)
+            country_unconstrained = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_unconstrained')
+            ]['revenue_usd'].sum() / 1e6
+            revenues.append(country_unconstrained)
+            
+            # Region constrained (use region scenario)
+            region_constrained = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_constrained')
+            ]['revenue_usd'].sum() / 1e6
+            revenues.append(region_constrained)
+            
+            # Region unconstrained (use region scenario)
+            region_unconstrained = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_unconstrained')
+            ]['revenue_usd'].sum() / 1e6
+            revenues.append(region_unconstrained)
+            
+            # Check if we have any data
+            if all(r == 0 for r in revenues):
+                axes[i].text(0.5, 0.5, 'No Data', ha='center', va='center', transform=axes[i].transAxes)
+                axes[i].set_title(label)
+                continue
+            
+            # Color bars differently for National vs Regional  
+            colors = ['#1f77b4', '#1f77b4', '#ff7f0e', '#ff7f0e']  # Blue for National, Orange for Regional
+            
+            # Plot bars individually with different alphas
+            bars = []
+            alphas = [0.6, 1.0, 0.6, 1.0]  # Lighter for constrained, darker for unconstrained
+            for j, (color, alpha, revenue) in enumerate(zip(colors, alphas, revenues)):
+                bar = axes[i].bar(j, revenue, color=color, alpha=alpha)
+                bars.extend(bar)
+            
+            # Add value labels
+            for bar, val in zip(bars, revenues):
+                if val > 0:
+                    axes[i].text(bar.get_x() + bar.get_width()/2., val,
+                               f'{val:.1f}', ha='center', va='bottom', fontweight='bold')
+            
+            axes[i].set_title(label, fontweight='bold')
+            axes[i].set_ylabel('Revenue (Million USD)' if i == 0 else '', fontweight='bold')
+            axes[i].set_xticks(range(len(constraints)))
+            axes[i].set_xticklabels(constraint_labels, rotation=45, ha='right')
+            axes[i].grid(axis='y', alpha=0.3)
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'revenue_constraint_comparison.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        saved_paths.append(output_path)
+        
+        # Create difference and percentage change chart
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        fig.suptitle(f'Revenue Differences: Regional vs National\n{get_country_name(iso3)}', 
+                     fontsize=14, fontweight='bold')
+        
+        for col, (scenario, label) in enumerate(zip(scenarios, scenario_labels)):
+            # Use correct scenario variants for proper comparison
+            scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  # For country constraints
+            scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   # For region constraints
+            
+            # Calculate revenues using correct scenario variants
+            national_constrained = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_constrained')
+            ]['revenue_usd'].sum() / 1e6
+            
+            national_unconstrained = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_unconstrained')
+            ]['revenue_usd'].sum() / 1e6
+            
+            regional_constrained = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_constrained')
+            ]['revenue_usd'].sum() / 1e6
+            
+            regional_unconstrained = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_unconstrained')
+            ]['revenue_usd'].sum() / 1e6
+            
+            # Check if we have any data
+            if (national_constrained == 0 and national_unconstrained == 0 and 
+                regional_constrained == 0 and regional_unconstrained == 0):
+                axes[0, col].text(0.5, 0.5, 'No Data', ha='center', va='center', transform=axes[0, col].transAxes)
+                axes[1, col].text(0.5, 0.5, 'No Data', ha='center', va='center', transform=axes[1, col].transAxes)
+                axes[0, col].set_title(label)
+                continue
+            
+            # Calculate differences (Regional - National)
+            diff_constrained = regional_constrained - national_constrained
+            diff_unconstrained = regional_unconstrained - national_unconstrained
+            
+            # Calculate percentage changes
+            pct_constrained = ((regional_constrained / national_constrained) - 1) * 100 if national_constrained != 0 else 0
+            pct_unconstrained = ((regional_unconstrained / national_unconstrained) - 1) * 100 if national_unconstrained != 0 else 0
+            
+            # Plot absolute differences (top row)
+            values = [diff_constrained, diff_unconstrained]
+            colors = ['#fc8d62', '#66c2a5']  # Different colors for constrained/unconstrained
+            bars = axes[0, col].bar(['Constrained', 'Unconstrained'], values, color=colors, alpha=0.8)
+            axes[0, col].set_title(label, fontweight='bold')
+            if col == 0:
+                axes[0, col].set_ylabel('Revenue Difference\n(Million USD)', fontweight='bold')
+            axes[0, col].axhline(y=0, color='black', linestyle='-', alpha=0.3)
+            axes[0, col].grid(axis='y', alpha=0.3)
+            
+            # Add value labels
+            for bar, val in zip(bars, values):
+                if abs(val) > 0.01:
+                    axes[0, col].text(bar.get_x() + bar.get_width()/2., val,
+                                    f'{val:.1f}', ha='center',
+                                    va='bottom' if val > 0 else 'top', fontweight='bold')
+            
+            # Plot percentage differences (bottom row)
+            pct_values = [pct_constrained, pct_unconstrained]
+            bars = axes[1, col].bar(['Constrained', 'Unconstrained'], pct_values, color=colors, alpha=0.8)
+            if col == 0:
+                axes[1, col].set_ylabel('Percentage Change (%)', fontweight='bold')
+            axes[1, col].axhline(y=0, color='black', linestyle='-', alpha=0.3)
+            axes[1, col].grid(axis='y', alpha=0.3)
+            
+            # Add percentage labels
+            for bar, pct in zip(bars, pct_values):
+                if abs(pct) > 0.01:
+                    axes[1, col].text(bar.get_x() + bar.get_width()/2., pct,
+                                    f'{pct:.1f}%', ha='center',
+                                    va='bottom' if pct > 0 else 'top', fontweight='bold')
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'revenue_differences_regional_vs_national.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        saved_paths.append(output_path)
+        
+    except Exception as e:
+        print(f"Error creating revenue comparison charts: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return saved_paths
+
+def create_consolidated_goal_comparison(df_country, output_dir, iso3):
+    """Create a single consolidated chart showing all goal comparisons"""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios
+        df_2040 = df_country[df_country['scenario'].str.contains('2040')].copy()
+        
+        if df_2040.empty:
+            return None
+        
+        # Define metrics to compare
+        metrics = [
+            ('production_tonnes', 'Production', 'kt', 1000),
+            ('revenue_usd', 'Revenue', 'Million USD', 1e6),
+            ('water_usage_m3', 'Water Usage', 'Million m³', 1e6),
+            ('energy_tonsCO2eq', 'CO₂ Emissions', 'kt CO₂eq', 1000)
+        ]
+        
+        # Create 2x2 subplot layout
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle(f'Strategic Goal Comparison (2040)\n{get_country_name(iso3)}', 
+                     fontsize=16, fontweight='bold', y=0.98)
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['BAU', 'Early\nRefining', 'Precursor']
+        
+        for idx, (metric_col, metric_title, units, divisor) in enumerate(metrics):
+            row, col = idx // 2, idx % 2
+            
+            if metric_col not in df_2040.columns:
+                axes[row, col].text(0.5, 0.5, 'Data Not Available', ha='center', va='center', 
+                                   transform=axes[row, col].transAxes, style='italic')
+                axes[row, col].set_title(f'{metric_title} ({units})', fontweight='bold')
+                continue
+            
+            # Aggregate data by scenario and constraint
+            scenario_data = []
+            
+            for scenario in scenarios:
+                scenario_vals = []
+                # Use correct scenario variants for proper comparison
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  # For country constraints
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   # For region constraints
+                
+                # Country unconstrained (use country scenario)
+                country_val = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_unconstrained')
+                ][metric_col].sum() / divisor
+                scenario_vals.append(country_val)
+                
+                # Region unconstrained (use region scenario)
+                region_val = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_unconstrained')
+                ][metric_col].sum() / divisor
+                scenario_vals.append(region_val)
+                
+                scenario_data.append(scenario_vals)
+            
+            # Create grouped bar chart
+            x = np.arange(len(scenarios))
+            width = 0.35
+            
+            national_vals = [data[0] for data in scenario_data]
+            regional_vals = [data[1] for data in scenario_data]
+            
+            bars1 = axes[row, col].bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+            bars2 = axes[row, col].bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+            
+            # Add value labels
+            for bars in [bars1, bars2]:
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0:
+                        axes[row, col].text(bar.get_x() + bar.get_width()/2., height,
+                                          f'{height:.1f}', ha='center', va='bottom', fontsize=9)
+            
+            axes[row, col].set_title(f'{metric_title} ({units})', fontweight='bold', fontsize=12)
+            axes[row, col].set_xticks(x)
+            axes[row, col].set_xticklabels(scenario_labels)
+            axes[row, col].grid(axis='y', alpha=0.3)
+            
+            # Add legend only to first subplot
+            if idx == 0:
+                axes[row, col].legend()
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'consolidated_goal_comparison_2040.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Error creating consolidated goal comparison: {e}")
+        return None
+
+def create_consolidated_revenue_chart(df_country, output_dir, iso3):
+    """Create a single consolidated chart showing revenue across scenarios"""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios
+        df_2040 = df_country[df_country['scenario'].str.contains('2040')].copy()
+        
+        if df_2040.empty:
+            return None
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['BAU', 'Early Refining', 'Precursor']
+        
+        # Check if we have multiple minerals to use subplots
+        minerals = df_2040['reference_mineral'].unique()
+        
+        # Filter out minerals with no export revenue across all scenarios
+        minerals_with_revenue = []
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        
+        for mineral in minerals:
+            mineral_data = df_2040[df_2040['reference_mineral'] == mineral]
+            total_revenue = 0
+            
+            # Check total revenue across all scenarios for this mineral
+            for scenario in scenarios:
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                national_val = mineral_data[
+                    (mineral_data['scenario'] == scenario_country_mid) & 
+                    (mineral_data['constraint'] == 'country_unconstrained')
+                ]['revenue_usd'].sum()
+                
+                regional_val = mineral_data[
+                    (mineral_data['scenario'] == scenario_region_mid) & 
+                    (mineral_data['constraint'] == 'region_unconstrained')
+                ]['revenue_usd'].sum()
+                
+                total_revenue += national_val + regional_val
+            
+            # Only include minerals with non-zero revenue
+            if total_revenue > 0:
+                minerals_with_revenue.append(mineral)
+        
+        # Use filtered mineral list
+        minerals = minerals_with_revenue
+        
+        if len(minerals) == 0:
+            print(f"No minerals with export revenue found for {iso3}")
+            return None
+        
+        if len(minerals) > 1:
+            # Multiple minerals - use subplots
+            n_minerals = len(minerals)
+            fig, axes = plt.subplots(n_minerals, 1, figsize=(12, 4 * n_minerals), sharex=True)
+            if n_minerals == 1:
+                axes = [axes]  # Make it iterable
+            
+            fig.suptitle(f'Export Revenue by Development Strategy\n{get_country_name(iso3)}', 
+                         fontsize=16, fontweight='bold', y=0.98)
+            
+            for mineral_idx, mineral in enumerate(minerals):
+                mineral_data = df_2040[df_2040['reference_mineral'] == mineral]
+                
+                # Calculate revenue for each scenario using correct scenario variants
+                scenario_data = []
+                for scenario in scenarios:
+                    scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                    scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                    
+                    # Get National and Regional values (unconstrained for cleaner comparison)
+                    national_val = mineral_data[
+                        (mineral_data['scenario'] == scenario_country_mid) & 
+                        (mineral_data['constraint'] == 'country_unconstrained')
+                    ]['revenue_usd'].sum() / 1e6
+                    
+                    regional_val = mineral_data[
+                        (mineral_data['scenario'] == scenario_region_mid) & 
+                        (mineral_data['constraint'] == 'region_unconstrained')
+                    ]['revenue_usd'].sum() / 1e6
+                    
+                    scenario_data.append([national_val, regional_val])
+                
+                # Create grouped bar chart
+                x = np.arange(len(scenarios))
+                width = 0.35
+                
+                national_vals = [data[0] for data in scenario_data]
+                regional_vals = [data[1] for data in scenario_data]
+                
+                bars1 = axes[mineral_idx].bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+                bars2 = axes[mineral_idx].bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+                
+                # Add value labels
+                for bars in [bars1, bars2]:
+                    for bar in bars:
+                        height = bar.get_height()
+                        if height > 0.1:
+                            axes[mineral_idx].text(bar.get_x() + bar.get_width()/2., height,
+                                                  f'{height:.1f}', ha='center', va='bottom', fontsize=9)
+                
+                axes[mineral_idx].set_title(f'{mineral.title()}', fontweight='bold', fontsize=12)
+                axes[mineral_idx].set_ylabel('Export Revenue (Million USD)', fontweight='bold')
+                axes[mineral_idx].set_xticks(x)
+                axes[mineral_idx].set_xticklabels(scenario_labels)
+                axes[mineral_idx].grid(axis='y', alpha=0.3)
+                
+                # Add legend only to first subplot
+                if mineral_idx == 0:
+                    axes[mineral_idx].legend()
+        else:
+            # Single mineral or aggregate - single plot
+            fig, ax = plt.subplots(figsize=(10, 6))
+            fig.suptitle(f'Export Revenue by Development Strategy\n{get_country_name(iso3)}', 
+                         fontsize=14, fontweight='bold')
+            
+            # Calculate revenue for each scenario using correct scenario variants
+            scenario_data = []
+            for scenario in scenarios:
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                # Get National and Regional values (unconstrained for cleaner comparison)
+                national_val = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_unconstrained')
+                ]['revenue_usd'].sum() / 1e6
+                
+                regional_val = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_unconstrained')
+                ]['revenue_usd'].sum() / 1e6
+                
+                scenario_data.append([national_val, regional_val])
+            
+            # Create grouped bar chart
+            x = np.arange(len(scenarios))
+            width = 0.35
+            
+            national_vals = [data[0] for data in scenario_data]
+            regional_vals = [data[1] for data in scenario_data]
+            
+            bars1 = ax.bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+            bars2 = ax.bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+            
+            # Add value labels
+            for bars in [bars1, bars2]:
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0.1:
+                        ax.text(bar.get_x() + bar.get_width()/2., height,
+                               f'{height:.1f}', ha='center', va='bottom', fontsize=10)
+            
+            ax.set_ylabel('Export Revenue (Million USD)', fontweight='bold')
+            ax.set_xlabel('Development Strategy', fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(scenario_labels)
+            ax.grid(axis='y', alpha=0.3)
+            ax.legend()
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'consolidated_revenue_comparison.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Error creating consolidated revenue chart: {e}")
+        return None
+
+def create_consolidated_production_chart(df_country, output_dir, iso3):
+    """Create a single consolidated chart showing production by processing type across scenarios"""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        from plot_utils import get_processing_type_colors
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios and exclude Metal content
+        df_2040 = df_country[
+            (df_country['scenario'].str.contains('2040')) &
+            (df_country['processing_type'] != 'Metal content')
+        ].copy()
+        
+        if df_2040.empty:
+            return None
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['BAU', 'Early Refining', 'Precursor']
+        
+        # Aggregate production by scenario and processing type
+        production_data = []
+        processing_types = []
+        
+        for scenario in scenarios:
+            scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+            scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+            
+            # Get National values
+            national_data = df_2040[
+                (df_2040['scenario'] == scenario_country_mid) & 
+                (df_2040['constraint'] == 'country_unconstrained')
+            ].groupby('processing_type')['production_tonnes'].sum() / 1000
+            
+            # Get Regional values
+            regional_data = df_2040[
+                (df_2040['scenario'] == scenario_region_mid) & 
+                (df_2040['constraint'] == 'region_unconstrained')
+            ].groupby('processing_type')['production_tonnes'].sum() / 1000
+            
+            production_data.extend([national_data, regional_data])
+            
+            # Track processing types
+            processing_types.extend(list(national_data.index))
+            processing_types.extend(list(regional_data.index))
+        
+        # Get unique processing types
+        unique_proc_types = sorted(list(set(processing_types)))
+        
+        if not unique_proc_types:
+            return None
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(14, 8))
+        fig.suptitle(f'Production by Processing Type and Development Strategy\n{get_country_name(iso3)}', 
+                     fontsize=14, fontweight='bold')
+        
+        # Create grouped bar chart
+        x = np.arange(len(scenarios))
+        width = 0.35
+        
+        # For each processing type, create bars across scenarios
+        colors = [get_processing_type_colors().get(pt, '#808080') for pt in unique_proc_types]
+        
+        bottom_national = np.zeros(len(scenarios))
+        bottom_regional = np.zeros(len(scenarios))
+        
+        for i, proc_type in enumerate(unique_proc_types):
+            national_vals = []
+            regional_vals = []
+            
+            for j, scenario in enumerate(scenarios):
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                # Get National values
+                national_val = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_unconstrained') &
+                    (df_2040['processing_type'] == proc_type)
+                ]['production_tonnes'].sum() / 1000
+                national_vals.append(national_val)
+                
+                # Get Regional values
+                regional_val = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_unconstrained') &
+                    (df_2040['processing_type'] == proc_type)
+                ]['production_tonnes'].sum() / 1000
+                regional_vals.append(regional_val)
+            
+            # Plot stacked bars
+            bars1 = ax.bar(x - width/2, national_vals, width, bottom=bottom_national, 
+                          label=f'{proc_type} (National)' if i == 0 else "", 
+                          color=colors[i], alpha=0.8, edgecolor='white', linewidth=0.5)
+            bars2 = ax.bar(x + width/2, regional_vals, width, bottom=bottom_regional,
+                          label=f'{proc_type} (Regional)' if i == 0 else "",
+                          color=colors[i], alpha=0.6, edgecolor='white', linewidth=0.5)
+            
+            bottom_national += national_vals
+            bottom_regional += regional_vals
+        
+        # Customize chart
+        ax.set_ylabel('Production (kt)', fontweight='bold')
+        ax.set_xlabel('Development Strategy', fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(scenario_labels)
+        ax.grid(axis='y', alpha=0.3)
+        
+        # Create custom legend
+        legend_elements = []
+        legend_elements.append(plt.Rectangle((0, 0), 1, 1, facecolor='grey', alpha=0.8, label='National'))
+        legend_elements.append(plt.Rectangle((0, 0), 1, 1, facecolor='grey', alpha=0.6, label='Regional'))
+        
+        for i, proc_type in enumerate(unique_proc_types):
+            legend_elements.append(plt.Rectangle((0, 0), 1, 1, facecolor=colors[i], label=proc_type))
+        
+        ax.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'consolidated_production_by_type.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Error creating consolidated production chart: {e}")
+        return None
+
+def create_consolidated_water_chart(df_country, output_dir, iso3):
+    """Create a single consolidated chart showing water usage across scenarios"""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios
+        df_2040 = df_country[df_country['scenario'].str.contains('2040')].copy()
+        
+        if df_2040.empty:
+            return None
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['BAU', 'Early Refining', 'Precursor']
+        
+        # Check if we have multiple minerals for subplots
+        minerals = df_2040['reference_mineral'].unique()
+        
+        # Filter out minerals with no water usage across all scenarios
+        minerals_with_usage = []
+        
+        for mineral in minerals:
+            mineral_data = df_2040[df_2040['reference_mineral'] == mineral]
+            total_usage = 0
+            
+            # Check total water usage across all scenarios for this mineral
+            for scenario in scenarios:
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                national_val = mineral_data[
+                    (mineral_data['scenario'] == scenario_country_mid) & 
+                    (mineral_data['constraint'] == 'country_unconstrained')
+                ]['water_usage_m3'].sum()
+                
+                regional_val = mineral_data[
+                    (mineral_data['scenario'] == scenario_region_mid) & 
+                    (mineral_data['constraint'] == 'region_unconstrained')
+                ]['water_usage_m3'].sum()
+                
+                total_usage += national_val + regional_val
+            
+            # Only include minerals with non-zero water usage
+            if total_usage > 0:
+                minerals_with_usage.append(mineral)
+        
+        # Use filtered mineral list
+        minerals = minerals_with_usage
+        
+        if len(minerals) == 0:
+            print(f"No minerals with water usage found for {iso3}")
+            return None
+        
+        if len(minerals) > 1:
+            # Multiple minerals - use subplots
+            n_minerals = len(minerals)
+            fig, axes = plt.subplots(n_minerals, 1, figsize=(12, 4 * n_minerals), sharex=True)
+            if n_minerals == 1:
+                axes = [axes]
+            
+            fig.suptitle(f'Water Usage by Development Strategy\n{get_country_name(iso3)}', 
+                         fontsize=16, fontweight='bold', y=0.98)
+            
+            for mineral_idx, mineral in enumerate(minerals):
+                mineral_data = df_2040[df_2040['reference_mineral'] == mineral]
+                
+                scenario_data = []
+                for scenario in scenarios:
+                    scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                    scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                    
+                    national_val = mineral_data[
+                        (mineral_data['scenario'] == scenario_country_mid) & 
+                        (mineral_data['constraint'] == 'country_unconstrained')
+                    ]['water_usage_m3'].sum() / 1e6
+                    
+                    regional_val = mineral_data[
+                        (mineral_data['scenario'] == scenario_region_mid) & 
+                        (mineral_data['constraint'] == 'region_unconstrained')
+                    ]['water_usage_m3'].sum() / 1e6
+                    
+                    scenario_data.append([national_val, regional_val])
+                
+                x = np.arange(len(scenarios))
+                width = 0.35
+                
+                national_vals = [data[0] for data in scenario_data]
+                regional_vals = [data[1] for data in scenario_data]
+                
+                bars1 = axes[mineral_idx].bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+                bars2 = axes[mineral_idx].bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+                
+                # Add value labels
+                for bars in [bars1, bars2]:
+                    for bar in bars:
+                        height = bar.get_height()
+                        if height > 0.1:
+                            axes[mineral_idx].text(bar.get_x() + bar.get_width()/2., height,
+                                                  f'{height:.1f}', ha='center', va='bottom', fontsize=9)
+                
+                axes[mineral_idx].set_title(f'{mineral.title()}', fontweight='bold', fontsize=12)
+                axes[mineral_idx].set_ylabel('Water Usage (Million m³)', fontweight='bold')
+                axes[mineral_idx].set_xticks(x)
+                axes[mineral_idx].set_xticklabels(scenario_labels)
+                axes[mineral_idx].grid(axis='y', alpha=0.3)
+                
+                if mineral_idx == 0:
+                    axes[mineral_idx].legend()
+        else:
+            # Single mineral or aggregate
+            fig, ax = plt.subplots(figsize=(10, 6))
+            fig.suptitle(f'Water Usage by Development Strategy\n{get_country_name(iso3)}', 
+                         fontsize=14, fontweight='bold')
+            
+            scenario_data = []
+            for scenario in scenarios:
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                national_val = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_unconstrained')
+                ]['water_usage_m3'].sum() / 1e6
+                
+                regional_val = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_unconstrained')
+                ]['water_usage_m3'].sum() / 1e6
+                
+                scenario_data.append([national_val, regional_val])
+            
+            x = np.arange(len(scenarios))
+            width = 0.35
+            
+            national_vals = [data[0] for data in scenario_data]
+            regional_vals = [data[1] for data in scenario_data]
+            
+            bars1 = ax.bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+            bars2 = ax.bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+            
+            # Add value labels
+            for bars in [bars1, bars2]:
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0.1:
+                        ax.text(bar.get_x() + bar.get_width()/2., height,
+                               f'{height:.1f}', ha='center', va='bottom', fontsize=10)
+            
+            ax.set_ylabel('Water Usage (Million m³)', fontweight='bold')
+            ax.set_xlabel('Development Strategy', fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(scenario_labels)
+            ax.grid(axis='y', alpha=0.3)
+            ax.legend()
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'consolidated_water_usage.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Error creating consolidated water chart: {e}")
+        return None
+
+def create_consolidated_emissions_chart(df_country, output_dir, iso3):
+    """Create a single consolidated chart showing CO2 emissions across scenarios"""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
+        plt.style.use('default')
+        sns.set_palette('Set2')
+        
+        # Filter for 2040 scenarios
+        df_2040 = df_country[df_country['scenario'].str.contains('2040')].copy()
+        
+        if df_2040.empty:
+            return None
+        
+        scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = ['BAU', 'Early Refining', 'Precursor']
+        
+        # Calculate total CO2 (transport + energy)
+        df_2040['total_co2_kt'] = (df_2040['transport_total_tonsCO2eq'] + df_2040['energy_tonsCO2eq']) / 1000
+        
+        # Check if we have multiple minerals for subplots
+        minerals = df_2040['reference_mineral'].unique()
+        
+        # Filter out minerals with no CO2 emissions across all scenarios
+        minerals_with_emissions = []
+        
+        for mineral in minerals:
+            mineral_data = df_2040[df_2040['reference_mineral'] == mineral]
+            total_emissions = 0
+            
+            # Check total CO2 emissions across all scenarios for this mineral
+            for scenario in scenarios:
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                national_val = mineral_data[
+                    (mineral_data['scenario'] == scenario_country_mid) & 
+                    (mineral_data['constraint'] == 'country_unconstrained')
+                ]['total_co2_kt'].sum()
+                
+                regional_val = mineral_data[
+                    (mineral_data['scenario'] == scenario_region_mid) & 
+                    (mineral_data['constraint'] == 'region_unconstrained')
+                ]['total_co2_kt'].sum()
+                
+                total_emissions += national_val + regional_val
+            
+            # Only include minerals with non-zero CO2 emissions
+            if total_emissions > 0:
+                minerals_with_emissions.append(mineral)
+        
+        # Use filtered mineral list
+        minerals = minerals_with_emissions
+        
+        if len(minerals) == 0:
+            print(f"No minerals with CO2 emissions found for {iso3}")
+            return None
+        
+        if len(minerals) > 1:
+            # Multiple minerals - use subplots
+            n_minerals = len(minerals)
+            fig, axes = plt.subplots(n_minerals, 1, figsize=(12, 4 * n_minerals), sharex=True)
+            if n_minerals == 1:
+                axes = [axes]
+            
+            fig.suptitle(f'CO₂ Emissions by Development Strategy\n{get_country_name(iso3)}', 
+                         fontsize=16, fontweight='bold', y=0.98)
+            
+            for mineral_idx, mineral in enumerate(minerals):
+                mineral_data = df_2040[df_2040['reference_mineral'] == mineral]
+                
+                scenario_data = []
+                for scenario in scenarios:
+                    scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                    scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                    
+                    national_val = mineral_data[
+                        (mineral_data['scenario'] == scenario_country_mid) & 
+                        (mineral_data['constraint'] == 'country_unconstrained')
+                    ]['total_co2_kt'].sum()
+                    
+                    regional_val = mineral_data[
+                        (mineral_data['scenario'] == scenario_region_mid) & 
+                        (mineral_data['constraint'] == 'region_unconstrained')
+                    ]['total_co2_kt'].sum()
+                    
+                    scenario_data.append([national_val, regional_val])
+                
+                x = np.arange(len(scenarios))
+                width = 0.35
+                
+                national_vals = [data[0] for data in scenario_data]
+                regional_vals = [data[1] for data in scenario_data]
+                
+                bars1 = axes[mineral_idx].bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+                bars2 = axes[mineral_idx].bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+                
+                # Add value labels
+                for bars in [bars1, bars2]:
+                    for bar in bars:
+                        height = bar.get_height()
+                        if height > 0.1:
+                            axes[mineral_idx].text(bar.get_x() + bar.get_width()/2., height,
+                                                  f'{height:.1f}', ha='center', va='bottom', fontsize=9)
+                
+                axes[mineral_idx].set_title(f'{mineral.title()}', fontweight='bold', fontsize=12)
+                axes[mineral_idx].set_ylabel('CO₂ Emissions (kt)', fontweight='bold')
+                axes[mineral_idx].set_xticks(x)
+                axes[mineral_idx].set_xticklabels(scenario_labels)
+                axes[mineral_idx].grid(axis='y', alpha=0.3)
+                
+                if mineral_idx == 0:
+                    axes[mineral_idx].legend()
+        else:
+            # Single mineral or aggregate
+            fig, ax = plt.subplots(figsize=(10, 6))
+            fig.suptitle(f'CO₂ Emissions by Development Strategy\n{get_country_name(iso3)}', 
+                         fontsize=14, fontweight='bold')
+            
+            scenario_data = []
+            for scenario in scenarios:
+                scenario_country_mid = f"{scenario}_mid_min_threshold_metal_tons"  
+                scenario_region_mid = f"{scenario}_mid_max_threshold_metal_tons"   
+                
+                national_val = df_2040[
+                    (df_2040['scenario'] == scenario_country_mid) & 
+                    (df_2040['constraint'] == 'country_unconstrained')
+                ]['total_co2_kt'].sum()
+                
+                regional_val = df_2040[
+                    (df_2040['scenario'] == scenario_region_mid) & 
+                    (df_2040['constraint'] == 'region_unconstrained')
+                ]['total_co2_kt'].sum()
+                
+                scenario_data.append([national_val, regional_val])
+            
+            x = np.arange(len(scenarios))
+            width = 0.35
+            
+            national_vals = [data[0] for data in scenario_data]
+            regional_vals = [data[1] for data in scenario_data]
+            
+            bars1 = ax.bar(x - width/2, national_vals, width, label='National', alpha=0.8)
+            bars2 = ax.bar(x + width/2, regional_vals, width, label='Regional', alpha=0.8)
+            
+            # Add value labels
+            for bars in [bars1, bars2]:
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0.1:
+                        ax.text(bar.get_x() + bar.get_width()/2., height,
+                               f'{height:.1f}', ha='center', va='bottom', fontsize=10)
+            
+            ax.set_ylabel('CO₂ Emissions (kt)', fontweight='bold')
+            ax.set_xlabel('Development Strategy', fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(scenario_labels)
+            ax.grid(axis='y', alpha=0.3)
+            ax.legend()
+        
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, 'consolidated_co2_emissions.png')
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Error creating consolidated emissions chart: {e}")
+        return None

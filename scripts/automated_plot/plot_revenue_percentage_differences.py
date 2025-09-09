@@ -180,7 +180,7 @@ def generate_revenue_pct_regional_vs_national(df, output_dir):
     
     # Exclude BAU as differences are always zero (no regional processing difference in BAU)
     scenarios = ['early_refining_2040', 'precursor_2040']
-    scenario_labels = ['Early Processing 2040', 'Product Manufacturing 2040']
+    scenario_labels = ['Early Refining 2040', 'Precursor Product 2040']
     
     for constraint_level in ['constrained', 'unconstrained']:
         print(f"\nProcessing {constraint_level} scenarios...")
@@ -246,7 +246,7 @@ def generate_revenue_pct_constrained_vs_unconstrained(df, output_dir):
     print("\n=== Generating Revenue % Change: Constrained vs Unconstrained ===")
     
     scenarios = ['bau_2040', 'early_refining_2040', 'precursor_2040']
-    scenario_labels = ['BAU 2040', 'Early Processing 2040', 'Product Manufacturing 2040']
+    scenario_labels = ['BAU 2040', 'Early Refining 2040', 'Precursor Product 2040']
     
     for policy_type in ['country', 'region']:
         policy_label = 'National Focus' if policy_type == 'country' else 'Regional Integration'

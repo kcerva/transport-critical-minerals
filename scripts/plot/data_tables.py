@@ -16,6 +16,22 @@ POLICY_MATCHES = {
     'high_min': 'high_max'
 }
 
+def filter_scenarios(df, scenarios_filter='mid_only'):
+    """
+    Filter dataframe based on scenario requirements
+    
+    Parameters:
+    - scenarios_filter: 'mid_only', 'all', or 'baseline_and_mid'
+    """
+    if scenarios_filter == 'all':
+        return df.copy()
+    elif scenarios_filter == 'mid_only':
+        return df[df['scenario'].str.contains('mid_min|mid_max', na=False)].copy()
+    elif scenarios_filter == 'baseline_and_mid':
+        return df[df['scenario'].str.contains('mid_min|mid_max|2022_baseline', na=False)].copy()
+    else:
+        return df.copy()
+
 def pct_change_between_both(df, constraint_1, constraint_2, value_cols):
     df1 = df[df['constraint'] == constraint_1].copy()
     df2 = df[df['constraint'] == constraint_2].copy()
@@ -76,16 +92,17 @@ def pct_change_between_both(df, constraint_1, constraint_2, value_cols):
 
     return pd.DataFrame(rows)
 
-def create_pivot_with_pct_change(df, value_column, unit_label, conversion_factor=1.0, to_kt=False):
+def create_pivot_with_pct_change(df, value_column, unit_label, conversion_factor=1.0, to_kt=False, scenarios_filter='mid_only'):
     import pandas as pd
 
-    df = df.copy()
+    # Filter scenarios first
+    df_filtered = filter_scenarios(df, scenarios_filter)
     col_converted = f"{value_column}_converted"
     factor = 1e3 if to_kt else conversion_factor
-    df.loc[:, col_converted] = df[value_column] / factor
+    df_filtered.loc[:, col_converted] = df_filtered[value_column] / factor
 
     # Create the pivot table
-    pivot = df.pivot_table(
+    pivot = df_filtered.pivot_table(
         index=['scenario', 'constraint'],
         columns='reference_mineral',
         values=col_converted,
@@ -188,49 +205,109 @@ def create_value_added_simple_by_mineral(df, to_kt=False):
 
     return create_pivot_with_pct_change(df_filtered, 'value_added_simple', 'value_added_simple_musd', conversion_factor=1e6, to_kt=to_kt)
 
-def create_transport_emissions_by_mineral(df, to_kt=False):
-    return create_pivot_with_pct_change(df, 'transport_total_tonsCO2eq', 'transport_emissions_MtCO2e', conversion_factor=1e6, to_kt=to_kt)
+def create_transport_emissions_by_mineral(df, to_kt=False, scenarios_filter='mid_only'):
+    return create_pivot_with_pct_change(df, 'transport_total_tonsCO2eq', 'transport_emissions_MtCO2e', conversion_factor=1e6, to_kt=to_kt, scenarios_filter=scenarios_filter)
 
-def create_energy_emissions_by_mineral(df, to_kt=False):
-    return create_pivot_with_pct_change(df, 'energy_tonsCO2eq', 'energy_emissions_MtCO2e', conversion_factor=1e6, to_kt=to_kt)
+def create_energy_emissions_by_mineral(df, to_kt=False, scenarios_filter='mid_only'):
+    return create_pivot_with_pct_change(df, 'energy_tonsCO2eq', 'energy_emissions_MtCO2e', conversion_factor=1e6, to_kt=to_kt, scenarios_filter=scenarios_filter)
 
-def create_transport_volume_by_mineral(df, to_kt=False):
-    return create_pivot_with_pct_change(df, 'transport_total_tonkm', 'transport_volume_million_ton_km', conversion_factor=1e6, to_kt=to_kt)
+def create_total_emissions_by_mineral(df, to_kt=False, scenarios_filter='mid_only'):
+    # Create total emissions column (transport + energy)
+    df = df.copy()
+    df['total_emissions_tonsCO2eq'] = df['transport_total_tonsCO2eq'] + df['energy_tonsCO2eq']
+    return create_pivot_with_pct_change(df, 'total_emissions_tonsCO2eq', 'total_emissions_MtCO2e', conversion_factor=1e6, to_kt=to_kt, scenarios_filter=scenarios_filter)
 
-def create_energy_capacity_by_mineral(df, to_kt=False):
-    return create_pivot_with_pct_change(df, 'energy_req_capacity_kW', 'energy_capacity_GW', conversion_factor=1e6, to_kt=to_kt)
+def create_transport_volume_by_mineral(df, to_kt=False, scenarios_filter='mid_only'):
+    return create_pivot_with_pct_change(df, 'transport_total_tonkm', 'transport_volume_million_ton_km', conversion_factor=1e6, to_kt=to_kt, scenarios_filter=scenarios_filter)
 
-def create_water_use_by_mineral(df, to_kt=False):
-    return create_pivot_with_pct_change(df, 'water_usage_m3', 'water_use_million_m3', conversion_factor=1e6, to_kt=to_kt)
+def create_energy_capacity_by_mineral(df, to_kt=False, scenarios_filter='mid_only'):
+    return create_pivot_with_pct_change(df, 'energy_req_capacity_kW', 'energy_capacity_GW', conversion_factor=1e6, to_kt=to_kt, scenarios_filter=scenarios_filter)
+
+def create_water_use_by_mineral(df, to_kt=False, scenarios_filter='mid_only'):
+    return create_pivot_with_pct_change(df, 'water_usage_m3', 'water_use_million_m3', conversion_factor=1e6, to_kt=to_kt, scenarios_filter=scenarios_filter)
 
 # Existing table generators for non-mineral-pivoted outputs
-def create_metal_content_table(df, to_kt=False):
-    df_stage0 = df[df['processing_stage'] == 0].copy()
+def create_metal_content_table(df, to_kt=False, scenarios_filter='mid_only', consolidated_format=False):
+    # For metal content, we want baseline + mid scenarios (since regional vs national are very similar)
+    if scenarios_filter == 'mid_only' and consolidated_format:
+        # Use baseline + mid scenarios
+        df_filtered = filter_scenarios(df, 'baseline_and_mid')
+    else:
+        df_filtered = filter_scenarios(df, scenarios_filter)
+    
+    df_stage0 = df_filtered[df_filtered['processing_stage'] == 0].copy()
     factor = 1e3 if to_kt else 1e6
     df_stage0['metal_content'] = df_stage0['production_tonnes'] / factor
 
-    pivot = df_stage0.pivot_table(
-        index=['scenario', 'constraint'],
-        columns='reference_mineral',
-        values='metal_content',
-        aggfunc='sum',
-        fill_value=0
-    )
-    pivot['Total'] = pivot.sum(axis=1)
-    pivot_reset = pivot.reset_index()
+    if consolidated_format:
+        # Consolidate similar scenarios - take average of regional and national for 2040 scenarios
+        consolidated_data = []
+        
+        # Handle baseline separately (usually only has one constraint type)
+        baseline_data = df_stage0[df_stage0['scenario'].str.contains('2022_baseline', na=False)]
+        if not baseline_data.empty:
+            baseline_summary = baseline_data.groupby(['scenario', 'reference_mineral'])['metal_content'].mean().reset_index()
+            baseline_summary['scenario_type'] = 'Baseline (2022)'
+            consolidated_data.append(baseline_summary)
+        else:
+            # If no baseline stage 0 data, note this in the table or skip
+            # We'll skip silently for now as baseline extraction data may not exist for all countries
+            pass
+        
+        # Handle 2040 scenarios - consolidate regional and national values
+        scenarios_2040 = ['bau_2040', 'early_refining_2040', 'precursor_2040']
+        scenario_labels = {'bau_2040': 'BAU (2040)', 'early_refining_2040': 'Early Refining (2040)', 'precursor_2040': 'Precursor Product (2040)'}
+        
+        for scenario in scenarios_2040:
+            scenario_data = df_stage0[df_stage0['scenario'].str.contains(scenario, na=False)]
+            if not scenario_data.empty:
+                # Take average across all constraint types for this scenario (since they're very similar)
+                scenario_summary = scenario_data.groupby(['reference_mineral'])['metal_content'].mean().reset_index()
+                scenario_summary['scenario'] = scenario
+                scenario_summary['scenario_type'] = scenario_labels.get(scenario, scenario)
+                consolidated_data.append(scenario_summary)
+        
+        if consolidated_data:
+            # Combine all consolidated data
+            result_df = pd.concat(consolidated_data, ignore_index=True)
+            
+            # Pivot to get minerals as columns
+            pivot = result_df.pivot_table(
+                index=['scenario_type'], 
+                columns='reference_mineral',
+                values='metal_content',
+                aggfunc='mean',  # Use mean in case of duplicates
+                fill_value=0
+            )
+            pivot['Total'] = pivot.sum(axis=1)
+            return pivot.reset_index()
+        else:
+            return pd.DataFrame()
+    
+    else:
+        # Original format with all constraint combinations
+        pivot = df_stage0.pivot_table(
+            index=['scenario', 'constraint'],
+            columns='reference_mineral',
+            values='metal_content',
+            aggfunc='sum',
+            fill_value=0
+        )
+        pivot['Total'] = pivot.sum(axis=1)
+        pivot_reset = pivot.reset_index()
 
-    value_cols = [col for col in pivot_reset.columns if col not in ['scenario', 'constraint']]
+        value_cols = [col for col in pivot_reset.columns if col not in ['scenario', 'constraint']]
 
-    try:
-        pct_c = pct_change_between_both(pivot_reset, 'country_constrained', 'region_constrained', value_cols)
-        pct_u = pct_change_between_both(pivot_reset, 'country_unconstrained', 'region_unconstrained', value_cols)
-        result = pd.concat([pivot_reset, pct_c, pct_u], ignore_index=True)
-    except Exception as e:
-        print("Failed to compute % change in metal content:", e)
-        result = pivot_reset.copy()
-        result['error'] = str(e)
+        try:
+            pct_c = pct_change_between_both(pivot_reset, 'country_constrained', 'region_constrained', value_cols)
+            pct_u = pct_change_between_both(pivot_reset, 'country_unconstrained', 'region_unconstrained', value_cols)
+            result = pd.concat([pivot_reset, pct_c, pct_u], ignore_index=True)
+        except Exception as e:
+            print("Failed to compute % change in metal content:", e)
+            result = pivot_reset.copy()
+            result['error'] = str(e)
 
-    return result
+        return result
 
 
 def create_unit_cost_table(df):
@@ -274,11 +351,13 @@ def create_unit_cost_table(df):
     return result
 
 
-def create_production_table(df, to_kt=False):
-    df = df[df['processing_stage'] != 0].copy()
+def create_production_table(df, to_kt=False, scenarios_filter='mid_only', remove_zero_rows=True):
+    # Filter scenarios first
+    df_filtered = filter_scenarios(df, scenarios_filter)
+    df_filtered = df_filtered[df_filtered['processing_stage'] != 0].copy()
     factor = 1e3 if to_kt else 1e6
-    df['production'] = df['production_tonnes'] / factor
-    pivot = df.pivot_table(
+    df_filtered['production'] = df_filtered['production_tonnes'] / factor
+    pivot = df_filtered.pivot_table(
         index=['scenario', 'constraint', 'processing_stage', 'year'],
         columns='reference_mineral',
         values='production',
@@ -286,13 +365,23 @@ def create_production_table(df, to_kt=False):
         fill_value=0
     )
     pivot['Total'] = pivot.sum(axis=1)
+    
+    # Remove rows where all mineral columns (including Total) are zero
+    if remove_zero_rows:
+        # Identify mineral columns (all except the index columns which are now in the index)
+        mineral_cols = [col for col in pivot.columns]
+        # Keep rows where at least one value is non-zero
+        pivot = pivot[(pivot[mineral_cols] != 0).any(axis=1)]
+    
     return pivot.reset_index()
 
-def create_production_by_type_table(df, to_kt=False):
-    df = df[df['processing_stage'] != 0].copy()
+def create_production_by_type_table(df, to_kt=False, scenarios_filter='mid_only', remove_zero_rows=True):
+    # Filter scenarios first  
+    df_filtered = filter_scenarios(df, scenarios_filter)
+    df_filtered = df_filtered[df_filtered['processing_stage'] != 0].copy()
     factor = 1e3 if to_kt else 1e6
-    df['production'] = df['production_tonnes'] / factor
-    pivot = df.pivot_table(
+    df_filtered['production'] = df_filtered['production_tonnes'] / factor
+    pivot = df_filtered.pivot_table(
         index=['scenario', 'constraint', 'processing_type', 'year'],
         columns='reference_mineral',
         values='production',
@@ -300,15 +389,24 @@ def create_production_by_type_table(df, to_kt=False):
         fill_value=0
     )
     pivot['Total'] = pivot.sum(axis=1)
+    
+    # Remove rows where all mineral columns (including Total) are zero
+    if remove_zero_rows:
+        # Identify mineral columns (all except the index columns which are now in the index)
+        mineral_cols = [col for col in pivot.columns]
+        # Keep rows where at least one value is non-zero
+        pivot = pivot[(pivot[mineral_cols] != 0).any(axis=1)]
+    
     return pivot.reset_index()
 
-def create_revenue_tables(df, to_kt=False):
-    df = df.copy()
+def create_revenue_tables(df, to_kt=False, scenarios_filter='mid_only'):
+    # Filter scenarios first
+    df_filtered = filter_scenarios(df, scenarios_filter)
     factor = 1e3 if to_kt else 1e6
-    df['revenue_musd'] = df['revenue_usd'] / factor
+    df_filtered['revenue_musd'] = df_filtered['revenue_usd'] / factor
 
     # Create flat summary
-    pivot = df.pivot_table(index=['scenario', 'constraint'], values='revenue_musd', aggfunc='sum').reset_index()
+    pivot = df_filtered.pivot_table(index=['scenario', 'constraint'], values='revenue_musd', aggfunc='sum').reset_index()
     main = pivot.pivot(index='scenario', columns='constraint', values='revenue_musd').fillna(0)
 
     def safe_pct_change(region, country):
@@ -327,7 +425,7 @@ def create_revenue_tables(df, to_kt=False):
     )
 
     # Create breakdown by processing type
-    by_type = df.pivot_table(index=['scenario', 'processing_type'], values='revenue_musd', aggfunc='sum').reset_index()
+    by_type = df_filtered.pivot_table(index=['scenario', 'processing_type'], values='revenue_musd', aggfunc='sum').reset_index()
 
     return main.reset_index(), by_type
 
@@ -556,6 +654,184 @@ def create_normalized_value_added_table_by_stage_and_type(df, to_kt=False):
 
     return pivot
 
+def create_infrastructure_table_with_constraint_columns(df, metric_column, unit_label, conversion_factor=1.0, scenarios_filter='mid_only'):
+    """
+    Create infrastructure table with constraints as columns instead of rows
+    """
+    df_filtered = filter_scenarios(df, scenarios_filter)
+    
+    # Group by scenario and constraint, sum the metric
+    grouped = df_filtered.groupby(['scenario', 'constraint'])[metric_column].sum().reset_index()
+    grouped[metric_column] = grouped[metric_column] / conversion_factor
+    
+    # Extract scenario base name (remove threshold parts)
+    def extract_scenario_base(scenario):
+        if '2040' in scenario:
+            # For 2040 scenarios, we need to keep everything up to and including '2040'
+            parts = scenario.split('_')
+            # Find the index of '2040'
+            if '2040' in parts:
+                idx_2040 = parts.index('2040')
+                return '_'.join(parts[:idx_2040 + 1])
+            else:
+                # Fallback for scenarios where 2040 is part of another word
+                for i, part in enumerate(parts):
+                    if '2040' in part:
+                        return '_'.join(parts[:i + 1])
+        return scenario
+    
+    grouped['scenario_base'] = grouped['scenario'].apply(extract_scenario_base)
+    
+    # Pivot to get constraints as columns
+    pivot = grouped.pivot_table(
+        index='scenario_base',
+        columns='constraint', 
+        values=metric_column,
+        aggfunc='mean',  # Use mean to handle duplicate scenario bases
+        fill_value=0
+    )
+    
+    # Reorder columns for better readability
+    desired_order = ['country_constrained', 'country_unconstrained', 'region_constrained', 'region_unconstrained']
+    available_cols = [col for col in desired_order if col in pivot.columns]
+    other_cols = [col for col in pivot.columns if col not in desired_order]
+    
+    pivot = pivot[available_cols + other_cols]
+    
+    # Clean up scenario names
+    scenario_name_mapping = {
+        'bau_2040': 'BAU (2040)',
+        'early_refining_2040': 'Early Refining (2040)', 
+        'precursor_2040': 'Precursor Product (2040)',
+        '2022_baseline': 'Baseline (2022)'
+    }
+    
+    pivot.index = [scenario_name_mapping.get(idx, idx) for idx in pivot.index]
+    
+    # Clean up column names
+    constraint_name_mapping = {
+        'country_constrained': 'National Constrained',
+        'country_unconstrained': 'National Unconstrained',
+        'region_constrained': 'Regional Constrained', 
+        'region_unconstrained': 'Regional Unconstrained'
+    }
+    
+    pivot.columns = [constraint_name_mapping.get(col, col) for col in pivot.columns]
+    
+    return pivot.reset_index()
+
+def extract_demand_level(scenario):
+    """Extract demand level (low/mid/high) from scenario name"""
+    if 'low_min' in scenario or 'low_max' in scenario:
+        return 'Low'
+    elif 'mid_min' in scenario or 'mid_max' in scenario:
+        return 'Medium'
+    elif 'high_min' in scenario or 'high_max' in scenario:
+        return 'High'
+    elif '2022_baseline' in scenario:
+        return 'Baseline'
+    else:
+        return 'Unknown'
+
+def create_infrastructure_table_all_scenarios(df, metric_column, unit_label, conversion_factor=1.0):
+    """
+    Create comprehensive infrastructure table for Technical Annex with all scenarios
+    Uses row-based format with demand level column for better readability
+    """
+    # Don't filter - use all scenarios
+    grouped = df.groupby(['scenario', 'constraint'])[metric_column].sum().reset_index()
+    grouped[metric_column] = grouped[metric_column] / conversion_factor
+    
+    # Extract scenario components
+    def extract_scenario_base(scenario):
+        if '2040' in scenario:
+            parts = scenario.split('_')
+            if '2040' in parts:
+                idx_2040 = parts.index('2040')
+                return '_'.join(parts[:idx_2040 + 1])
+            else:
+                for i, part in enumerate(parts):
+                    if '2040' in part:
+                        return '_'.join(parts[:i + 1])
+        return scenario
+    
+    grouped['scenario_base'] = grouped['scenario'].apply(extract_scenario_base)
+    grouped['demand_level'] = grouped['scenario'].apply(extract_demand_level)
+    
+    # Pivot with scenario and demand as row indices, constraints as columns
+    pivot = grouped.pivot_table(
+        index=['scenario_base', 'demand_level'],
+        columns='constraint',
+        values=metric_column,
+        aggfunc='mean',
+        fill_value=0
+    )
+    
+    # Reorder columns for better readability
+    desired_order = ['country_constrained', 'country_unconstrained', 'region_constrained', 'region_unconstrained']
+    available_cols = [col for col in desired_order if col in pivot.columns]
+    other_cols = [col for col in pivot.columns if col not in desired_order]
+    pivot = pivot[available_cols + other_cols]
+    
+    # Clean up scenario names
+    scenario_name_mapping = {
+        'bau_2040': 'BAU (2040)',
+        'early_refining_2040': 'Early Refining (2040)', 
+        'precursor_2040': 'Precursor Product (2040)',
+        '2022_baseline': 'Baseline (2022)'
+    }
+    
+    # Clean up column names
+    constraint_name_mapping = {
+        'country_constrained': 'National Constrained',
+        'country_unconstrained': 'National Unconstrained',
+        'region_constrained': 'Regional Constrained', 
+        'region_unconstrained': 'Regional Unconstrained'
+    }
+    
+    pivot.columns = [constraint_name_mapping.get(col, col) for col in pivot.columns]
+    
+    # Reset index and format the multi-index properly
+    pivot = pivot.reset_index()
+    
+    # Format scenario names in the dataframe
+    pivot['scenario_base'] = pivot['scenario_base'].map(lambda x: scenario_name_mapping.get(x, x))
+    
+    # Rename columns for clarity
+    pivot.rename(columns={'scenario_base': 'Scenario', 'demand_level': 'Demand Level'}, inplace=True)
+    
+    # Sort by scenario and demand level for logical ordering
+    demand_order = ['Baseline', 'Low', 'Medium', 'High']
+    pivot['demand_sort'] = pivot['Demand Level'].map({d: i for i, d in enumerate(demand_order)})
+    pivot = pivot.sort_values(['Scenario', 'demand_sort'])
+    pivot = pivot.drop('demand_sort', axis=1)
+    
+    return pivot
+
+def create_transport_volume_table_all_scenarios(df):
+    """Transport volume table with all scenarios for Technical Annex"""
+    return create_infrastructure_table_all_scenarios(
+        df, 'transport_total_tonkm', 'Transport Volume (Million ton-km)', 1e6
+    )
+
+def create_energy_capacity_table_all_scenarios(df):
+    """Energy capacity table with all scenarios for Technical Annex"""  
+    return create_infrastructure_table_all_scenarios(
+        df, 'energy_req_capacity_kW', 'Electricity Capacity (GW)', 1e6
+    )
+
+def create_transport_volume_table_with_columns(df, scenarios_filter='mid_only'):
+    """Transport volume table with constraint columns"""
+    return create_infrastructure_table_with_constraint_columns(
+        df, 'transport_total_tonkm', 'Transport Volume (Million ton-km)', 1e6, scenarios_filter
+    )
+
+def create_energy_capacity_table_with_columns(df, scenarios_filter='mid_only'):
+    """Energy capacity table with constraint columns"""  
+    return create_infrastructure_table_with_constraint_columns(
+        df, 'energy_req_capacity_kW', 'Electricity Capacity (GW)', 1e6, scenarios_filter
+    )
+
 def create_normalized_revenue_summary(df):
     # Use validated, consistent logic
     by_type = create_normalized_revenue_table_by_stage_and_type(df)
@@ -577,7 +853,7 @@ def create_normalized_revenue_summary(df):
 def create_summary_mid_demand_unconstrained(df):
     """
     Create summary table with 2040 scenario comparisons between country and regional constraints
-    Now handles BAU, Early Processing, and Product Manufacturing scenarios
+    Now handles BAU, Early Refining, and Precursor Product scenarios
     """
     # Ensure simple value addition is calculated - must be applied per group
     if 'value_added_simple' not in df.columns:
@@ -705,13 +981,9 @@ def create_summary_mid_demand_unconstrained(df):
             # Water, energy, transport and emissions
             water_mcm = constraint_data['water_usage_m3'].sum() / 1e6
             transport_co2_kt = constraint_data['transport_total_tonsCO2eq'].sum() / 1e3
-            # TODO: Restore when energy results are ready
-            # energy_co2_kt = constraint_data['energy_tonsCO2eq'].sum() / 1e3
-            energy_co2_kt = 0  # Placeholder until energy data available
+            energy_co2_kt = constraint_data['energy_tonsCO2eq'].sum() / 1e3
             transport_volume_mtkm = constraint_data['transport_total_tonkm'].sum() / 1e6  # Convert to million tonne-km
-            # TODO: Restore when energy results are ready  
-            # energy_capacity_gw = constraint_data['energy_req_capacity_kW'].sum() / 1e6  # Convert kW to GW
-            energy_capacity_gw = 0  # Placeholder until energy data available
+            energy_capacity_gw = constraint_data['energy_req_capacity_kW'].sum() / 1e6  # Convert kW to GW
             
             summary_data.append({
                 'goal_type': goal,
@@ -892,11 +1164,10 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
         create_total_costs_by_mineral(df).to_excel(writer, sheet_name="total_costs_million_usd", index=False)
         create_revenue_by_mineral(df).to_excel(writer, sheet_name="revenue_million_usd", index=False)
         create_transport_emissions_by_mineral(df).to_excel(writer, sheet_name="transport_emissions_MtCO2e", index=False)
-        # TODO: Restore when energy results are ready
-        # create_energy_emissions_by_mineral(df).to_excel(writer, sheet_name="energy_emissions_MtCO2e", index=False)
+        create_energy_emissions_by_mineral(df).to_excel(writer, sheet_name="energy_emissions_MtCO2e", index=False)
+        create_total_emissions_by_mineral(df).to_excel(writer, sheet_name="total_emissions_MtCO2e", index=False)
         create_transport_volume_by_mineral(df).to_excel(writer, sheet_name="transport_volume_mtkm", index=False)
-        # TODO: Restore when energy results are ready
-        # create_energy_capacity_by_mineral(df).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
+        create_energy_capacity_by_mineral(df).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
         create_water_use_by_mineral(df).to_excel(writer, sheet_name="water_use_million_m3", index=False)
         create_value_added_by_mineral(df).to_excel(writer, sheet_name="value_added_million_usd", index=False)
         create_value_added_simple_by_mineral(df).to_excel(writer, sheet_name="value_added_simple_million_usd", index=False)
@@ -939,11 +1210,10 @@ def generate_pivot_excel_files(df: pd.DataFrame, global_output_path: str, countr
                 create_total_costs_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="total_costs_musd", index=False)
                 create_revenue_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="revenue_musd", index=False)
                 create_transport_emissions_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="transport_emissions_ktCO2e", index=False)
-                # TODO: Restore when energy results are ready
-                # create_energy_emissions_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="energy_emissions_ktCO2e", index=False)
+                create_energy_emissions_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="energy_emissions_ktCO2e", index=False)
+                create_total_emissions_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="total_emissions_ktCO2e", index=False)
                 create_transport_volume_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="transport_volume_mtkm", index=False)
-                # TODO: Restore when energy results are ready
-                # create_energy_capacity_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
+                create_energy_capacity_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="energy_capacity_GW", index=False)
                 create_water_use_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="water_use_mcm", index=False)
                 create_value_added_by_mineral(df_country, to_kt=True).to_excel(writer, sheet_name="value_added_musd", index=False)
                 create_production_table(df_country, to_kt=True).to_excel(writer, sheet_name="production_kt", index=False)
