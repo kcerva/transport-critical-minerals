@@ -58,6 +58,10 @@ def convert_excel_to_dict_format(excel_data):
                 if stage == 'nan':
                     continue
                 stage_key = f'Stage {stage}'
+
+                # Skip graphite stage 5
+                if mineral.lower() == 'graphite' and stage_key == 'Stage 5':
+                    continue
                 
                 if stage_key not in mineral_cost[mineral.lower()]['stages']:
                     mineral_cost[mineral.lower()]['stages'].append(stage_key)
@@ -66,34 +70,31 @@ def convert_excel_to_dict_format(excel_data):
                     mineral_price[mineral.lower()]['stages'].append(stage_key)
                 
                 # Extract values for years 2022, 2030, 2040
-                years = ['2022', '2030', '2040']
-                
+                year_cols = [2022, 2030, 2040]
+
                 if data_type == 'capex':
                     values = []
-                    for year in years:
-                        col_name = f'capex_{year}'
-                        if col_name in row:
-                            values.append(float(row[col_name]) if pd.notna(row[col_name]) else 0)
+                    for year in year_cols:
+                        if year in row:
+                            values.append(float(row[year]) if pd.notna(row[year]) else 0)
                         else:
                             values.append(0)
                     mineral_cost[mineral.lower()]['capex'][stage_key] = values
-                
+
                 elif data_type == 'opex':
                     values = []
-                    for year in years:
-                        col_name = f'opex_{year}'
-                        if col_name in row:
-                            values.append(float(row[col_name]) if pd.notna(row[col_name]) else 0)
+                    for year in year_cols:
+                        if year in row:
+                            values.append(float(row[year]) if pd.notna(row[year]) else 0)
                         else:
                             values.append(0)
                     mineral_cost[mineral.lower()]['opex'][stage_key] = values
-                
+
                 elif data_type == 'prices':
                     values = []
-                    for year in years:
-                        col_name = f'price_{year}'
-                        if col_name in row:
-                            values.append(float(row[col_name]) if pd.notna(row[col_name]) else 0)
+                    for year in year_cols:
+                        if year in row:
+                            values.append(float(row[year]) if pd.notna(row[year]) else 0)
                         else:
                             values.append(0)
                     mineral_price[mineral.lower()]['prices'][stage_key] = values
@@ -135,14 +136,14 @@ custom_stage_names = {
     'Cobalt': {
         'Stage 1': 'Concentrate',
         'Stage 2': 'Matte',
-        'Stage 3': 'Co-rich materials',
+        'Stage 3': 'Refined Co',
         'Stage 4.1': 'Hydroxide',
         'Stage 5': 'Sulphate'
     },
     'Nickel': {
         'Stage 1': 'Concentrate',
         'Stage 2': 'Matte',
-        'Stage 4': 'Class 1',
+        'Stage 3': 'Class 1',
         'Stage 5': 'Sulphate'
     },
     'Lithium': {
@@ -158,16 +159,22 @@ custom_stage_names = {
     'Graphite': {
         'Stage 1': 'Concentrate',
         'Stage 3': 'Spherical',
-        'Stage 4': 'Coated'
+        'Stage 4': 'Spherical Purified'
     }
 }
 
 def get_stage_label(mineral, stage):
-    """Get readable stage label for a mineral"""
+    """Get readable stage label for a mineral with stage number"""
     mineral_caps = mineral.capitalize()
+    stage_num = stage.replace("Stage ", "")
+    # Format stage number - remove .0 if it's a whole number
+    if stage_num.endswith('.0'):
+        stage_num = stage_num[:-2]
+
     if mineral_caps in custom_stage_names and stage in custom_stage_names[mineral_caps]:
-        return custom_stage_names[mineral_caps][stage]
-    return stage
+        compound_name = custom_stage_names[mineral_caps][stage]
+        return f"{stage_num} - {compound_name}"
+    return stage_num
 
 # =========================
 # COST SUBPLOTS (2x3 grid)
@@ -189,7 +196,11 @@ for idx, (mineral, data) in enumerate(mineral_cost.items()):
 
     # Get available stages with data
     available_stages = [s for s in stages if s in capex_data and s in opex_data]
-    
+
+    # Exclude cobalt Stage 2
+    if mineral.lower() == 'cobalt':
+        available_stages = [s for s in available_stages if s != 'Stage 2']
+
     if not available_stages:
         ax.set_title(f'{mineral.capitalize()} - No Data')
         continue
@@ -245,25 +256,29 @@ os.makedirs("/home/karlac/critical_minerals_Africa/transport-outputs/figures/cos
 fig_cost.savefig("/home/karlac/critical_minerals_Africa/transport-outputs/figures/cost_price_comparisons/all_minerals_costs.jpeg")
 
 # =========================
-# PRICE SUBPLOTS (2x3 grid)
+# PRICE SUBPLOTS (3x2 grid)
 # =========================
 
-fig_price, axs_price = plt.subplots(2, 3, figsize=(18, 12))
+fig_price, axs_price = plt.subplots(3, 2, figsize=(11, 12))
 axs_price = axs_price.flatten()
 
 for idx, (mineral, data) in enumerate(mineral_price.items()):
     if idx >= 6:
         break
-        
+
     ax = axs_price[idx]
     stages = data['stages']
     price_data = data['prices']
 
     # Get available stages with data
     available_stages = [s for s in stages if s in price_data]
-    
+
+    # Exclude cobalt Stage 2
+    if mineral.lower() == 'cobalt':
+        available_stages = [s for s in available_stages if s != 'Stage 2']
+
     if not available_stages:
-        ax.set_title(f'{mineral.capitalize()} - No Data')
+        ax.set_title(f'{mineral.capitalize()} - No Data', fontsize=12, fontweight='bold')
         continue
 
     for stage in available_stages:
@@ -271,17 +286,18 @@ for idx, (mineral, data) in enumerate(mineral_price.items()):
             label = get_stage_label(mineral, stage)
             ax.plot(years, price_data[stage], marker='o', label=label, color=stage_line_colors[stage])
 
-    ax.set_title(f'{mineral.capitalize()}')
-    ax.set_ylabel('USD/tonne')
+    ax.set_title(f'{mineral.capitalize()}', fontsize=12, fontweight='bold')
+    ax.set_ylabel('USD/tonne', fontsize=11)
     ax.set_ylim(bottom=0)
     ax.set_xticks(years)
-    ax.set_xticklabels(years, rotation=45, fontsize=11)
-    ax.grid(axis='y', linestyle='--', alpha=0.6)
+    ax.set_xticklabels(years, rotation=45, fontsize=10)
+    ax.grid(axis='y', linestyle='--', alpha=0.4)
     ax.legend(fontsize=9)
+    ax.tick_params(axis='both', labelsize=10)
 
-fig_price.suptitle('Price by Mineral and Stage', fontsize=16)
+fig_price.suptitle('Price by Mineral and Stage (2022-2040)', fontsize=16)
 fig_price.tight_layout(rect=[0, 0, 0.85, 0.95])
-fig_price.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+fig_price.subplots_adjust(wspace=0.4, hspace=0.4)
 fig_price.savefig("/home/karlac/critical_minerals_Africa/transport-outputs/figures/cost_price_comparisons/all_minerals_prices.jpeg")
 
 print("✅ Cost and price comparison plots generated successfully!")
