@@ -28,7 +28,17 @@ from plot_gdp_share_by_country_all_constraints import (
 )
 from plot_emissions_water_all_countries import (
     compute_emissions_by_country,
-    compute_water_by_country
+    compute_water_by_country,
+    plot_water_single_axis_clean,
+    plot_emissions_single_axis_clean,
+    plot_water_single_axis_comparison,
+    plot_emissions_single_axis_comparison,
+    plot_transport_volume_single_axis_clean,
+    plot_transport_volume_single_axis_comparison
+)
+from plot_revenue_all_countries import (
+    plot_revenue_single_axis_clean,
+    plot_revenue_single_axis_comparison
 )
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
@@ -248,10 +258,59 @@ def run_revenue_differences(df, output_dir, config):
     """Generate revenue difference plots comparing policy scenarios"""
     revenue_diff_dir = os.path.join(output_dir, 'revenue_differences')
     os.makedirs(revenue_diff_dir, exist_ok=True)
-    
+
     print("Generating revenue difference plots...")
     generate_essential_revenue_difference_plots(revenue_diff_dir)
     print(f"Revenue difference plots completed. Saved to: {revenue_diff_dir}")
+
+def run_single_axis_all(df, output_dir, config):
+    """Generate all single-axis charts (unconstrained with baseline + constrained vs unconstrained comparisons)"""
+    single_axis_dir = os.path.join(output_dir, "single_axis")
+    os.makedirs(single_axis_dir, exist_ok=True)
+
+    print("=" * 80)
+    print("Generating Single-Axis Charts")
+    print("=" * 80)
+
+    # Unconstrained with baseline (6 bars)
+    print("\n1. Unconstrained scenarios with 2022 baseline:")
+    print("   - Water (unconstrained + baseline)...")
+    water_paths = plot_water_single_axis_clean(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(water_paths[0])}")
+
+    print("   - Emissions (unconstrained + baseline)...")
+    co2_paths = plot_emissions_single_axis_clean(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(co2_paths[0])}")
+
+    print("   - Revenue (unconstrained + baseline)...")
+    revenue_paths = plot_revenue_single_axis_clean(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(revenue_paths[0])}")
+
+    print("   - Transport volume (unconstrained + baseline)...")
+    transport_paths = plot_transport_volume_single_axis_clean(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(transport_paths[0])}")
+
+    # Constrained vs Unconstrained comparison (10 bars, no baseline)
+    print("\n2. Constrained vs Unconstrained comparisons (2040 only):")
+    print("   - Water (constrained vs unconstrained)...")
+    water_comp_paths = plot_water_single_axis_comparison(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(water_comp_paths[0])}")
+
+    print("   - Emissions (constrained vs unconstrained)...")
+    co2_comp_paths = plot_emissions_single_axis_comparison(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(co2_comp_paths[0])}")
+
+    print("   - Revenue (constrained vs unconstrained)...")
+    revenue_comp_paths = plot_revenue_single_axis_comparison(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(revenue_comp_paths[0])}")
+
+    print("   - Transport volume (constrained vs unconstrained)...")
+    transport_comp_paths = plot_transport_volume_single_axis_comparison(df, single_axis_dir)
+    print(f"     ✓ Saved: {os.path.basename(transport_comp_paths[0])}")
+
+    print("\n" + "=" * 80)
+    print(f"All single-axis charts saved to: {single_axis_dir}")
+    print("=" * 80)
 
 AVAILABLE_PLOTS = {
     "revenue_gdp_share": run_plot_revenue,
@@ -266,14 +325,16 @@ AVAILABLE_PLOTS = {
     "country_docx_reports": run_country_docx_reports,
     "supply_curves": run_supply_curves,
     "production_differences": run_production_differences,
-    "revenue_differences": run_revenue_differences
+    "revenue_differences": run_revenue_differences,
+    "single_axis_all": run_single_axis_all
 }
 
 PLOT_GROUPS = {
     "all_countries": [
         "production_all_countries", "emissions_all_countries", "water_all_countries",
         "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons",
-        "goal_comparisons_all_countries", "supply_curves", "production_differences", "revenue_differences"
+        "goal_comparisons_all_countries", "supply_curves", "production_differences", "revenue_differences",
+        "single_axis_all"
     ],
     "single_countries": ["single_country_all", "country_differences"],
     "core": ["production_all_countries", "emissions_all_countries", "goal_comparisons_all_countries"],

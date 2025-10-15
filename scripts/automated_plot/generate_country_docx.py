@@ -30,17 +30,20 @@ from data_tables import (
 # Import chart adapters
 from chart_adapters import (
     adapt_production_charts,
-    adapt_gdp_share_charts, 
+    adapt_gdp_share_charts,
     adapt_emissions_charts,
     adapt_water_charts,
     create_policy_difference_chart,
     adapt_goal_comparison_charts,
     create_production_difference_charts,
     create_revenue_difference_charts,
+    create_water_difference_charts,
+    create_emissions_difference_charts,
     create_consolidated_revenue_chart,
     create_consolidated_production_chart,
     create_consolidated_water_chart,
-    create_consolidated_emissions_chart
+    create_consolidated_emissions_chart,
+    adapt_country_single_axis_charts
 )
 
 # Import DOCX utilities
@@ -80,89 +83,131 @@ def get_country_name(iso3):
     }
     return country_mapping.get(iso3, iso3)
 
-def generate_country_charts(df_country, iso3, temp_dir):
+def generate_country_charts(df_country, iso3, temp_dir, permanent_dir=None):
     """Generate charts for a specific country and return paths"""
     chart_paths = {}
-    
+
     try:
         # Production charts
-        production_paths = adapt_production_charts(df_country, iso3, temp_dir)
+        production_paths = adapt_production_charts(df_country, iso3, temp_dir, permanent_dir)
         if production_paths:
             chart_paths['production'] = production_paths
-        
+
+        # Single-axis charts (NEW - mineral breakdown by scenario)
+        single_axis_paths = adapt_country_single_axis_charts(df_country, iso3, temp_dir, permanent_dir)
+        if single_axis_paths:
+            chart_paths['single_axis'] = single_axis_paths
+
         # Consolidated charts
         consolidated_revenue_dir = os.path.join(temp_dir, f'consolidated_revenue_{iso3}')
         os.makedirs(consolidated_revenue_dir, exist_ok=True)
-        consolidated_revenue_path = create_consolidated_revenue_chart(df_country, consolidated_revenue_dir, iso3)
+        consolidated_revenue_path = create_consolidated_revenue_chart(df_country, consolidated_revenue_dir, iso3, permanent_dir)
         if consolidated_revenue_path:
             chart_paths['revenue'] = [consolidated_revenue_path]
-        
+
         # Consolidated production chart
         consolidated_production_dir = os.path.join(temp_dir, f'consolidated_production_{iso3}')
         os.makedirs(consolidated_production_dir, exist_ok=True)
-        consolidated_production_path = create_consolidated_production_chart(df_country, consolidated_production_dir, iso3)
+        consolidated_production_path = create_consolidated_production_chart(df_country, consolidated_production_dir, iso3, permanent_dir)
         if consolidated_production_path:
             chart_paths['production_consolidated'] = [consolidated_production_path]
-        
+
         # Consolidated water chart
         consolidated_water_dir = os.path.join(temp_dir, f'consolidated_water_{iso3}')
         os.makedirs(consolidated_water_dir, exist_ok=True)
-        consolidated_water_path = create_consolidated_water_chart(df_country, consolidated_water_dir, iso3)
+        consolidated_water_path = create_consolidated_water_chart(df_country, consolidated_water_dir, iso3, permanent_dir)
         if consolidated_water_path:
             chart_paths['water_consolidated'] = [consolidated_water_path]
-        
+
         # Consolidated emissions chart
         consolidated_emissions_dir = os.path.join(temp_dir, f'consolidated_emissions_{iso3}')
         os.makedirs(consolidated_emissions_dir, exist_ok=True)
-        consolidated_emissions_path = create_consolidated_emissions_chart(df_country, consolidated_emissions_dir, iso3)
+        consolidated_emissions_path = create_consolidated_emissions_chart(df_country, consolidated_emissions_dir, iso3, permanent_dir)
         if consolidated_emissions_path:
             chart_paths['emissions_consolidated'] = [consolidated_emissions_path]
-        
-        # GDP share charts for value addition  
-        value_paths = adapt_gdp_share_charts(
-            df_country, iso3, temp_dir, 'value_added', 'Value Addition Share', 'Value Added (Million USD)'
-        )
-        if value_paths:
-            chart_paths['value_addition'] = value_paths
-        
-        # Emissions charts
-        emissions_paths = adapt_emissions_charts(df_country, iso3, temp_dir)
-        if emissions_paths:
-            chart_paths['emissions'] = emissions_paths
-        
-        # Water usage charts  
-        water_paths = adapt_water_charts(df_country, iso3, temp_dir)
-        if water_paths:
-            chart_paths['water'] = water_paths
-        
+
+        # NOTE: Removed individual scenario charts for value_addition, emissions, and water
+        # These generate 12 charts each (one per scenario-constraint) that are NOT used in DOCX
+        # The consolidated charts (above) provide better multi-scenario comparisons
+        # and ARE actually used in the DOCX sections
+
         # Policy difference plots (regional vs national)
-        diff_paths = create_policy_difference_chart(df_country, iso3, temp_dir)
+        diff_paths = create_policy_difference_chart(df_country, iso3, temp_dir, permanent_dir)
         if diff_paths:
             chart_paths['differences'] = diff_paths
-        
+
         # Goal comparison charts (BAU vs Early Refining vs Precursor for 2040)
-        goal_comparison_paths = adapt_goal_comparison_charts(df_country, iso3, temp_dir)
+        goal_comparison_paths = adapt_goal_comparison_charts(df_country, iso3, temp_dir, permanent_dir)
         if goal_comparison_paths:
             chart_paths['goal_comparisons'] = goal_comparison_paths
-        
+
         # Production difference charts (constraint comparison)
         production_diff_dir = os.path.join(temp_dir, f'production_diff_{iso3}')
         os.makedirs(production_diff_dir, exist_ok=True)
-        production_diff_paths = create_production_difference_charts(df_country, production_diff_dir, iso3)
+        production_diff_paths = create_production_difference_charts(df_country, production_diff_dir, iso3, permanent_dir)
         if production_diff_paths:
             chart_paths['production_differences'] = production_diff_paths
-        
+
         # Revenue difference charts (constraint comparison)
         revenue_diff_dir = os.path.join(temp_dir, f'revenue_diff_{iso3}')
         os.makedirs(revenue_diff_dir, exist_ok=True)
-        revenue_diff_paths = create_revenue_difference_charts(df_country, revenue_diff_dir, iso3)
+        revenue_diff_paths = create_revenue_difference_charts(df_country, revenue_diff_dir, iso3, permanent_dir)
         if revenue_diff_paths:
             chart_paths['revenue_differences'] = revenue_diff_paths
-            
+
+        # Water difference charts
+        water_diff_dir = os.path.join(temp_dir, f'water_diff_{iso3}')
+        os.makedirs(water_diff_dir, exist_ok=True)
+        water_diff_paths = create_water_difference_charts(df_country, water_diff_dir, iso3, permanent_dir)
+        if water_diff_paths:
+            chart_paths['water_differences'] = water_diff_paths
+
+        # Emissions difference charts
+        emissions_diff_dir = os.path.join(temp_dir, f'emissions_diff_{iso3}')
+        os.makedirs(emissions_diff_dir, exist_ok=True)
+        emissions_diff_paths = create_emissions_difference_charts(df_country, emissions_diff_dir, iso3, permanent_dir)
+        if emissions_diff_paths:
+            chart_paths['emissions_differences'] = emissions_diff_paths
+
     except Exception as e:
         print(f"Error generating charts for {iso3}: {e}")
-    
+
     return chart_paths
+
+
+def add_single_axis_section_opener(doc, chart_paths, chart_key_clean, chart_key_comp, description):
+    """
+    Add single-axis charts at the start of a section
+
+    Args:
+        doc: Document object
+        chart_paths: Dictionary of all chart paths
+        chart_key_clean: Key in single_axis dict for clean chart (e.g., 'revenue_clean')
+        chart_key_comp: Key in single_axis dict for comparison chart (e.g., 'revenue_comparison')
+        description: Brief description of what the charts show
+    """
+    if 'single_axis' not in chart_paths:
+        return
+
+    single_axis = chart_paths['single_axis']
+
+    if chart_key_clean in single_axis and chart_key_comp in single_axis:
+        # Add overview chart with baseline
+        doc.add_paragraph(
+            f"Overview of {description} across scenarios by mineral:",
+            style='Body Text'
+        )
+        add_image_from_path(doc, single_axis[chart_key_clean], width_inches=6.5)
+
+        # Add comparison chart
+        doc.add_paragraph(
+            "Comparison of constrained vs unconstrained scenarios:",
+            style='Body Text'
+        )
+        add_image_from_path(doc, single_axis[chart_key_comp], width_inches=6.5)
+
+        doc.add_paragraph()  # Spacing before rest of section
+
 
 def add_metal_content_section(doc, df_country):
     """Add metal content production section"""
@@ -230,10 +275,17 @@ def add_production_analysis_section(doc, df_country, chart_paths):
 def add_economic_analysis_section(doc, df_country, chart_paths):
     """Add economic analysis section"""
     add_section_header(doc, 'Economic Analysis', level=1)
-    
+
     try:
         # Export Revenue analysis
         add_section_header(doc, 'Export Revenue Analysis', level=2)
+
+        # Add single-axis revenue charts as section opener
+        add_single_axis_section_opener(
+            doc, chart_paths,
+            'revenue_clean', 'revenue_comparison',
+            'revenue generation'
+        )
         rev_summary, rev_by_type = create_revenue_tables(df_country, to_kt=True, scenarios_filter='mid_only')
         
         if not rev_summary.empty:
@@ -275,10 +327,17 @@ def add_economic_analysis_section(doc, df_country, chart_paths):
 def add_environmental_impact_section(doc, df_country, chart_paths):
     """Add environmental impact section"""
     add_section_header(doc, 'Environmental Impact Analysis', level=1)
-    
+
     try:
         # Water usage analysis
         add_section_header(doc, 'Water Usage', level=2)
+
+        # Add single-axis water charts as section opener
+        add_single_axis_section_opener(
+            doc, chart_paths,
+            'water_clean', 'water_comparison',
+            'water usage'
+        )
         water_table = create_water_use_by_mineral(df_country, to_kt=True, scenarios_filter='mid_only')
         if not water_table.empty:
             add_table_from_dataframe(doc, water_table, title="Water Usage by Mineral (Million m³)")
@@ -289,9 +348,16 @@ def add_environmental_impact_section(doc, df_country, chart_paths):
                 if os.path.exists(chart_path):
                     add_image_from_path(doc, chart_path, title="Water Usage by Scenario and Mineral")
         
-        # CO2 emissions analysis  
+        # CO2 emissions analysis
         add_section_header(doc, 'CO2e Emissions', level=2)
-        
+
+        # Add single-axis CO2 charts as section opener
+        add_single_axis_section_opener(
+            doc, chart_paths,
+            'co2_clean', 'co2_comparison',
+            'CO₂ emissions'
+        )
+
         # Transport emissions
         transport_emissions = create_transport_emissions_by_mineral(df_country, to_kt=True, scenarios_filter='mid_only')
         if not transport_emissions.empty:
@@ -325,7 +391,14 @@ def add_infrastructure_analysis_section(doc, df_country, chart_paths):
     try:
         # Transport volumes
         add_section_header(doc, 'Transport Volumes', level=2)
-        
+
+        # Add single-axis transport charts as section opener
+        add_single_axis_section_opener(
+            doc, chart_paths,
+            'transport_clean', 'transport_comparison',
+            'transport volume requirements'
+        )
+
         # Create transport volume table with constraints as columns
         transport_table = create_transport_volume_table_with_columns(df_country, scenarios_filter='mid_only')
         if not transport_table.empty:
@@ -494,26 +567,26 @@ def add_enhanced_executive_summary(doc, df_country, iso3):
     except Exception as e:
         doc.add_paragraph(f"Error generating executive summary: {e}")
 
-def generate_country_docx(df_country, iso3, output_dir):
+def generate_country_docx(df_country, iso3, output_dir, permanent_charts_dir=None):
     """Generate a comprehensive DOCX report for a specific country"""
     country_name = get_country_name(iso3)
     print(f"Generating DOCX report for {country_name} ({iso3})")
-    
+
     # Create document
     doc = create_country_document(country_name, iso3)
-    
+
     # Add table of contents
     add_table_of_contents(doc)
-    
+
     # Add enhanced executive summary (written insights only)
     try:
         add_enhanced_executive_summary(doc, df_country, iso3)
     except Exception as e:
         print(f"Error adding executive summary: {e}")
-    
+
     # Generate charts in temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
-        chart_paths = generate_country_charts(df_country, iso3, temp_dir)
+        chart_paths = generate_country_charts(df_country, iso3, temp_dir, permanent_charts_dir)
         
         # Add sections in new order
         # 1. Metal Content Production (moved before processing analysis)
@@ -556,24 +629,24 @@ def generate_country_docx(df_country, iso3, output_dir):
     print(f"DOCX report saved: {docx_path}")
     return docx_path
 
-def generate_all_country_docx_reports(df, output_dir):
+def generate_all_country_docx_reports(df, output_dir, permanent_charts_dir=None):
     """Generate DOCX reports for all countries in the dataset"""
     print("Starting DOCX report generation for all countries...")
-    
+
     generated_reports = []
     countries = df['iso3'].dropna().unique()
-    
+
     for iso3 in countries:
         try:
             df_country = df[df['iso3'] == iso3].copy()
             if not df_country.empty:
-                docx_path = generate_country_docx(df_country, iso3, output_dir)
+                docx_path = generate_country_docx(df_country, iso3, output_dir, permanent_charts_dir)
                 generated_reports.append(docx_path)
             else:
                 print(f"No data found for country: {iso3}")
         except Exception as e:
             print(f"Error generating report for {iso3}: {e}")
-    
+
     print(f"Generated {len(generated_reports)} DOCX reports")
     return generated_reports
 
@@ -734,24 +807,31 @@ if __name__ == "__main__":
     # Load configuration
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     config_path = os.path.join(project_root, "config.json")
-    
+
     with open(config_path, "r") as f:
         config = json.load(f)
-    
+
     # Set paths
     output_data_path = config['paths']['results']
     docx_output_dir = os.path.join(output_data_path, 'country_reports')
     os.makedirs(docx_output_dir, exist_ok=True)
-    
+
+    # Create permanent charts directory
+    figures_path = config['paths']['figures']
+    permanent_charts_dir = os.path.join(figures_path, 'automated_plots', 'country_figures')
+    os.makedirs(permanent_charts_dir, exist_ok=True)
+    print(f"Charts will be saved permanently to: {permanent_charts_dir}")
+
     # Load data
     all_data_file = os.path.join(output_data_path, "all_data.xlsx")
     if not os.path.exists(all_data_file):
         print(f"Error: {all_data_file} not found. Please run the data processing pipeline first.")
         sys.exit(1)
-    
+
     df = pd.read_excel(all_data_file)
-    
+
     # Generate reports
-    generated_reports = generate_all_country_docx_reports(df, docx_output_dir)
-    
+    generated_reports = generate_all_country_docx_reports(df, docx_output_dir, permanent_charts_dir)
+
     print(f"All country DOCX reports completed. Output directory: {docx_output_dir}")
+    print(f"Charts saved to: {permanent_charts_dir}")

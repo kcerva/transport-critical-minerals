@@ -1301,3 +1301,599 @@ def plot_value_addition_simple_gdp_share_scenario_comparison_subplots(df, output
         saved_paths.append(filepath)
     
     return saved_paths
+
+
+def extract_emissions_water_data(df):
+    """
+    Extract water and CO2 emissions data for single-axis stacked bar charts.
+
+    Returns:
+        water_data: List of tuples (label, [cobalt, copper, graphite, lithium, manganese, nickel]) in million m³
+        co2_data: List of tuples (label, [cobalt, copper, graphite, lithium, manganese, nickel]) in Mt CO2e
+    """
+    minerals = ['cobalt', 'copper', 'graphite', 'lithium', 'manganese', 'nickel']
+
+    # Bar 1: Baseline 2022
+    baseline = df[(df['scenario'] == '2022_baseline') & (df['year'] == 2022)].copy()
+    baseline['total_co2_kt'] = (baseline['transport_total_tonsCO2eq'] + baseline['energy_tonsCO2eq']) / 1000
+
+    water_baseline = baseline.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+    co2_baseline = baseline.groupby('reference_mineral')['total_co2_kt'].sum() / 1000  # Mt
+
+    baseline_water = [water_baseline.get(m, 0) for m in minerals]
+    baseline_co2 = [co2_baseline.get(m, 0) for m in minerals]
+
+    # Bar 2: BAU 2040 Unconstrained (mid_min = country, but for BAU country=region)
+    bau = df[(df['scenario'] == 'bau_2040_mid_min_threshold_metal_tons') &
+             (df['constraint'] == 'country_unconstrained') &
+             (df['year'] == 2040)].copy()
+    bau['total_co2_kt'] = (bau['transport_total_tonsCO2eq'] + bau['energy_tonsCO2eq']) / 1000
+
+    water_bau = bau.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+    co2_bau = bau.groupby('reference_mineral')['total_co2_kt'].sum() / 1000
+
+    bau_water = [water_bau.get(m, 0) for m in minerals]
+    bau_co2 = [co2_bau.get(m, 0) for m in minerals]
+
+    # Bar 3: Early Refining 2040 Country Unconstrained
+    early_country = df[(df['scenario'] == 'early_refining_2040_mid_min_threshold_metal_tons') &
+                       (df['constraint'] == 'country_unconstrained') &
+                       (df['year'] == 2040)].copy()
+    early_country['total_co2_kt'] = (early_country['transport_total_tonsCO2eq'] + early_country['energy_tonsCO2eq']) / 1000
+
+    water_early_country = early_country.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+    co2_early_country = early_country.groupby('reference_mineral')['total_co2_kt'].sum() / 1000
+
+    early_country_water = [water_early_country.get(m, 0) for m in minerals]
+    early_country_co2 = [co2_early_country.get(m, 0) for m in minerals]
+
+    # Bar 4: Early Refining 2040 Region Unconstrained
+    early_region = df[(df['scenario'] == 'early_refining_2040_mid_max_threshold_metal_tons') &
+                      (df['constraint'] == 'region_unconstrained') &
+                      (df['year'] == 2040)].copy()
+    early_region['total_co2_kt'] = (early_region['transport_total_tonsCO2eq'] + early_region['energy_tonsCO2eq']) / 1000
+
+    water_early_region = early_region.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+    co2_early_region = early_region.groupby('reference_mineral')['total_co2_kt'].sum() / 1000
+
+    early_region_water = [water_early_region.get(m, 0) for m in minerals]
+    early_region_co2 = [co2_early_region.get(m, 0) for m in minerals]
+
+    # Bar 5: Precursor 2040 Country Unconstrained
+    precursor_country = df[(df['scenario'] == 'precursor_2040_mid_min_threshold_metal_tons') &
+                          (df['constraint'] == 'country_unconstrained') &
+                          (df['year'] == 2040)].copy()
+    precursor_country['total_co2_kt'] = (precursor_country['transport_total_tonsCO2eq'] + precursor_country['energy_tonsCO2eq']) / 1000
+
+    water_precursor_country = precursor_country.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+    co2_precursor_country = precursor_country.groupby('reference_mineral')['total_co2_kt'].sum() / 1000
+
+    precursor_country_water = [water_precursor_country.get(m, 0) for m in minerals]
+    precursor_country_co2 = [co2_precursor_country.get(m, 0) for m in minerals]
+
+    # Bar 6: Precursor 2040 Region Unconstrained
+    precursor_region = df[(df['scenario'] == 'precursor_2040_mid_max_threshold_metal_tons') &
+                         (df['constraint'] == 'region_unconstrained') &
+                         (df['year'] == 2040)].copy()
+    precursor_region['total_co2_kt'] = (precursor_region['transport_total_tonsCO2eq'] + precursor_region['energy_tonsCO2eq']) / 1000
+
+    water_precursor_region = precursor_region.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+    co2_precursor_region = precursor_region.groupby('reference_mineral')['total_co2_kt'].sum() / 1000
+
+    precursor_region_water = [water_precursor_region.get(m, 0) for m in minerals]
+    precursor_region_co2 = [co2_precursor_region.get(m, 0) for m in minerals]
+
+    # Create bar data structures
+    water_bars = [
+        ("Baseline", baseline_water),
+        ("Unconstrained", bau_water),
+        ("Country Unconstrained", early_country_water),
+        ("Region Unconstrained", early_region_water),
+        ("Country Unconstrained", precursor_country_water),
+        ("Region Unconstrained", precursor_region_water),
+    ]
+
+    co2_bars = [
+        ("Baseline", baseline_co2),
+        ("Unconstrained", bau_co2),
+        ("Country Unconstrained", early_country_co2),
+        ("Region Unconstrained", early_region_co2),
+        ("Country Unconstrained", precursor_country_co2),
+        ("Region Unconstrained", precursor_region_co2),
+    ]
+
+    return water_bars, co2_bars
+
+
+def extract_transport_volume_data(df):
+    """
+    Extract transport volume data for single-axis stacked bar charts.
+
+    Returns:
+        transport_bars: List of tuples (label, [cobalt, copper, graphite, lithium, manganese, nickel]) in million tonne-km
+    """
+    minerals = ['cobalt', 'copper', 'graphite', 'lithium', 'manganese', 'nickel']
+
+    # Bar 1: Baseline 2022
+    baseline = df[(df['scenario'] == '2022_baseline') & (df['year'] == 2022)].copy()
+    transport_baseline = baseline.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+    baseline_transport = [transport_baseline.get(m, 0) for m in minerals]
+
+    # Bar 2: BAU 2040 Unconstrained (mid_min = country, but for BAU country=region)
+    bau = df[(df['scenario'] == 'bau_2040_mid_min_threshold_metal_tons') &
+             (df['constraint'] == 'country_unconstrained') &
+             (df['year'] == 2040)].copy()
+    transport_bau = bau.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+    bau_transport = [transport_bau.get(m, 0) for m in minerals]
+
+    # Bar 3: Early Refining 2040 Country Unconstrained
+    early_country = df[(df['scenario'] == 'early_refining_2040_mid_min_threshold_metal_tons') &
+                       (df['constraint'] == 'country_unconstrained') &
+                       (df['year'] == 2040)].copy()
+    transport_early_country = early_country.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+    early_country_transport = [transport_early_country.get(m, 0) for m in minerals]
+
+    # Bar 4: Early Refining 2040 Region Unconstrained
+    early_region = df[(df['scenario'] == 'early_refining_2040_mid_max_threshold_metal_tons') &
+                      (df['constraint'] == 'region_unconstrained') &
+                      (df['year'] == 2040)].copy()
+    transport_early_region = early_region.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+    early_region_transport = [transport_early_region.get(m, 0) for m in minerals]
+
+    # Bar 5: Precursor 2040 Country Unconstrained
+    precursor_country = df[(df['scenario'] == 'precursor_2040_mid_min_threshold_metal_tons') &
+                          (df['constraint'] == 'country_unconstrained') &
+                          (df['year'] == 2040)].copy()
+    transport_precursor_country = precursor_country.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+    precursor_country_transport = [transport_precursor_country.get(m, 0) for m in minerals]
+
+    # Bar 6: Precursor 2040 Region Unconstrained
+    precursor_region = df[(df['scenario'] == 'precursor_2040_mid_max_threshold_metal_tons') &
+                         (df['constraint'] == 'region_unconstrained') &
+                         (df['year'] == 2040)].copy()
+    transport_precursor_region = precursor_region.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+    precursor_region_transport = [transport_precursor_region.get(m, 0) for m in minerals]
+
+    # Create bar data structures
+    transport_bars = [
+        ("Baseline", baseline_transport),
+        ("Unconstrained", bau_transport),
+        ("Country Unconstrained", early_country_transport),
+        ("Region Unconstrained", early_region_transport),
+        ("Country Unconstrained", precursor_country_transport),
+        ("Region Unconstrained", precursor_region_transport),
+    ]
+
+    return transport_bars
+
+
+def plot_clean_stacks(bars, ylabel, total_fmt, seg_label_threshold, centers, headings, outfile):
+    """Generalized stacked bar plot generator."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Color scheme
+    PALETTE = {
+        "cobalt":   "#4682b4",
+        "copper":   "#ffeb99",
+        "graphite": "#66c2a5",
+        "lithium":  "#cab2d6",
+        "manganese":"#fdae61",
+        "nickel":   "#f46d43",
+    }
+    ORDER  = ["cobalt","copper","graphite","lithium","manganese","nickel"]
+    LABELS = ["Cobalt","Copper","Graphite","Lithium","Manganese","Nickel"]
+
+    x = np.arange(len(bars))
+    fig, ax = plt.subplots(figsize=(32, 14))
+    totals = []
+
+    # --- Draw stacked bars ---
+    for xi, (_, vals) in enumerate(bars):
+        bottom = 0
+        for idx, k in enumerate(ORDER):
+            v = vals[idx]
+            ax.bar(xi, v, bottom=bottom, color=PALETTE[k], edgecolor="black")
+            if v >= seg_label_threshold:
+                ax.text(xi, bottom + v/2, total_fmt(v),
+                        ha="center", va="center", fontsize=14, fontweight="bold")
+            bottom += v
+        totals.append(bottom)
+
+    # --- Styling ---
+    ax.set_ylabel(ylabel, fontsize=24, fontweight="bold")
+    ax.tick_params(axis='y', labelsize=18)
+    ax.set_xticks(x)
+
+    def two_lines(lbl):
+        """Split long labels over two lines for readability."""
+        parts = lbl.split(" ")
+        if len(parts) == 2: return parts[0] + "\n" + parts[1]
+        if len(parts) == 3: return parts[0] + " " + parts[1] + "\n" + parts[2]
+        return lbl
+
+    ax.set_xticklabels([two_lines(lbl) for lbl,_ in bars], fontsize=18)
+
+    # Scenario group headings
+    ax2 = ax.secondary_xaxis('bottom')
+    ax2.set_xlim(ax.get_xlim())
+    ax2.set_xticks(centers)
+    ax2.set_xticklabels(headings, fontsize=26, fontweight="bold")
+    ax2.tick_params(axis='x', pad=60)
+
+    # Totals on top with better padding calculation
+    max_total = max(totals) if totals else 1
+    for xi, total in enumerate(totals):
+        if "CO₂" in ylabel or "Emissions" in ylabel or "Kilotonne" in ylabel:
+            pad = max_total * 0.03  # 3% of max for CO2
+        elif "USD" in ylabel or "Revenue" in ylabel or "Million USD" in ylabel:
+            pad = max_total * 0.08  # 8% of max value for revenue (more room needed)
+        elif "m³" in ylabel or "Water" in ylabel:
+            pad = max_total * 0.06  # 6% of max for water
+        elif "tonne" in ylabel or "Transport" in ylabel:
+            pad = max_total * 0.06  # 6% for transport
+        else:
+            pad = max_total * 0.05  # 5% default
+        ax.text(xi, total + pad, total_fmt(total),
+                ha="center", va="bottom", fontsize=26, fontweight="bold")
+
+    # Clean style
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle="--", alpha=0.35)
+
+    # Legend - positioned outside plot area to avoid obscuring data
+    handles = [plt.Rectangle((0,0),1,1,color=PALETTE[k]) for k in ORDER]
+    ax.legend(handles, LABELS, title="Minerals",
+              fontsize=18, title_fontsize=20,
+              loc="center left", bbox_to_anchor=(1.01, 0.5),
+              frameon=True, fancybox=True, shadow=True)
+
+    # Increase margins to prevent clipping - more room at top and left, reserve right for legend
+    fig.subplots_adjust(left=0.06, right=0.88, top=0.91, bottom=0.22)
+    plt.savefig(outfile, dpi=220)
+    plt.close(fig)
+    return outfile
+
+
+def plot_water_single_axis_clean(df, output_dir):
+    """Generate clean single-axis water usage stacked bar chart"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    water_bars, _ = extract_emissions_water_data(df)
+
+    centers = [0, 1, (2+3)/2, (4+5)/2]
+    headings = ["2022 Baseline", "BAU (2040)",
+                "Early Refining (2040)", "Precursor Product (2040)"]
+
+    water_path = os.path.join(output_dir, "water_single_axis_clean.png")
+    plot_clean_stacks(
+        bars=water_bars,
+        ylabel="Water use (million m³)",
+        total_fmt=lambda v: f"{int(round(v,0))}",
+        seg_label_threshold=28,
+        centers=centers,
+        headings=headings,
+        outfile=water_path
+    )
+
+    return [water_path]
+
+
+def plot_emissions_single_axis_clean(df, output_dir):
+    """Generate clean single-axis CO2 emissions stacked bar chart"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    _, co2_bars = extract_emissions_water_data(df)
+
+    centers = [0, 1, (2+3)/2, (4+5)/2]
+    headings = ["Baseline (2022)", "BAU (2040)",
+                "Early Refining (2040)", "Precursor Product (2040)"]
+
+    co2_path = os.path.join(output_dir, "co2_single_axis_clean.png")
+    plot_clean_stacks(
+        bars=co2_bars,
+        ylabel="Megatonne CO₂e",
+        total_fmt=lambda v: f"{v:.2f}",
+        seg_label_threshold=0.03,
+        centers=centers,
+        headings=headings,
+        outfile=co2_path
+    )
+
+    return [co2_path]
+
+
+def plot_transport_volume_single_axis_clean(df, output_dir):
+    """Generate clean single-axis transport volume stacked bar chart"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    transport_bars = extract_transport_volume_data(df)
+
+    centers = [0, 1, (2+3)/2, (4+5)/2]
+    headings = ["Baseline (2022)", "BAU (2040)",
+                "Early Refining (2040)", "Precursor Product (2040)"]
+
+    transport_path = os.path.join(output_dir, "transport_volume_single_axis_clean.png")
+    plot_clean_stacks(
+        bars=transport_bars,
+        ylabel="Transport Volume (Million tonne km)",
+        total_fmt=lambda v: f"{int(round(v,0))}",
+        seg_label_threshold=300,  # 300 million tonkm
+        centers=centers,
+        headings=headings,
+        outfile=transport_path
+    )
+
+    return [transport_path]
+
+
+def extract_emissions_water_data_comparison(df):
+    """
+    Extract both constrained and unconstrained data for 2040 scenarios (NO baseline).
+
+    Returns 10 bars: BAU (C+U), Early Refining (CC+CU+RC+RU), Precursor (CC+CU+RC+RU)
+
+    Returns:
+        water_bars: List of 10 tuples (label, [cobalt, copper, graphite, lithium, manganese, nickel]) in million m³
+        co2_bars: List of 10 tuples (label, [cobalt, copper, graphite, lithium, manganese, nickel]) in Mt CO2e
+    """
+    minerals = ['cobalt', 'copper', 'graphite', 'lithium', 'manganese', 'nickel']
+
+    # BAU 2040 - Constrained and Unconstrained
+    bau_constrained = df[(df['scenario'] == 'bau_2040_mid_min_threshold_metal_tons') &
+                         (df['constraint'] == 'country_constrained') &
+                         (df['year'] == 2040)].copy()
+    bau_constrained['total_co2_kt'] = (bau_constrained['transport_total_tonsCO2eq'] + bau_constrained['energy_tonsCO2eq']) / 1000
+
+    bau_unconstrained = df[(df['scenario'] == 'bau_2040_mid_min_threshold_metal_tons') &
+                           (df['constraint'] == 'country_unconstrained') &
+                           (df['year'] == 2040)].copy()
+    bau_unconstrained['total_co2_kt'] = (bau_unconstrained['transport_total_tonsCO2eq'] + bau_unconstrained['energy_tonsCO2eq']) / 1000
+
+    # Early Refining 2040 - All 4 combinations
+    early_country_constrained = df[(df['scenario'] == 'early_refining_2040_mid_min_threshold_metal_tons') &
+                                   (df['constraint'] == 'country_constrained') &
+                                   (df['year'] == 2040)].copy()
+    early_country_constrained['total_co2_kt'] = (early_country_constrained['transport_total_tonsCO2eq'] + early_country_constrained['energy_tonsCO2eq']) / 1000
+
+    early_country_unconstrained = df[(df['scenario'] == 'early_refining_2040_mid_min_threshold_metal_tons') &
+                                     (df['constraint'] == 'country_unconstrained') &
+                                     (df['year'] == 2040)].copy()
+    early_country_unconstrained['total_co2_kt'] = (early_country_unconstrained['transport_total_tonsCO2eq'] + early_country_unconstrained['energy_tonsCO2eq']) / 1000
+
+    early_region_constrained = df[(df['scenario'] == 'early_refining_2040_mid_max_threshold_metal_tons') &
+                                  (df['constraint'] == 'region_constrained') &
+                                  (df['year'] == 2040)].copy()
+    early_region_constrained['total_co2_kt'] = (early_region_constrained['transport_total_tonsCO2eq'] + early_region_constrained['energy_tonsCO2eq']) / 1000
+
+    early_region_unconstrained = df[(df['scenario'] == 'early_refining_2040_mid_max_threshold_metal_tons') &
+                                    (df['constraint'] == 'region_unconstrained') &
+                                    (df['year'] == 2040)].copy()
+    early_region_unconstrained['total_co2_kt'] = (early_region_unconstrained['transport_total_tonsCO2eq'] + early_region_unconstrained['energy_tonsCO2eq']) / 1000
+
+    # Precursor 2040 - All 4 combinations
+    precursor_country_constrained = df[(df['scenario'] == 'precursor_2040_mid_min_threshold_metal_tons') &
+                                       (df['constraint'] == 'country_constrained') &
+                                       (df['year'] == 2040)].copy()
+    precursor_country_constrained['total_co2_kt'] = (precursor_country_constrained['transport_total_tonsCO2eq'] + precursor_country_constrained['energy_tonsCO2eq']) / 1000
+
+    precursor_country_unconstrained = df[(df['scenario'] == 'precursor_2040_mid_min_threshold_metal_tons') &
+                                         (df['constraint'] == 'country_unconstrained') &
+                                         (df['year'] == 2040)].copy()
+    precursor_country_unconstrained['total_co2_kt'] = (precursor_country_unconstrained['transport_total_tonsCO2eq'] + precursor_country_unconstrained['energy_tonsCO2eq']) / 1000
+
+    precursor_region_constrained = df[(df['scenario'] == 'precursor_2040_mid_max_threshold_metal_tons') &
+                                      (df['constraint'] == 'region_constrained') &
+                                      (df['year'] == 2040)].copy()
+    precursor_region_constrained['total_co2_kt'] = (precursor_region_constrained['transport_total_tonsCO2eq'] + precursor_region_constrained['energy_tonsCO2eq']) / 1000
+
+    precursor_region_unconstrained = df[(df['scenario'] == 'precursor_2040_mid_max_threshold_metal_tons') &
+                                        (df['constraint'] == 'region_unconstrained') &
+                                        (df['year'] == 2040)].copy()
+    precursor_region_unconstrained['total_co2_kt'] = (precursor_region_unconstrained['transport_total_tonsCO2eq'] + precursor_region_unconstrained['energy_tonsCO2eq']) / 1000
+
+    # Aggregate water and CO2 for each scenario
+    def aggregate_data(data_frame):
+        water = data_frame.groupby('reference_mineral')['water_usage_m3'].sum() / 1e6
+        co2 = data_frame.groupby('reference_mineral')['total_co2_kt'].sum() / 1000
+        return [water.get(m, 0) for m in minerals], [co2.get(m, 0) for m in minerals]
+
+    bau_c_water, bau_c_co2 = aggregate_data(bau_constrained)
+    bau_u_water, bau_u_co2 = aggregate_data(bau_unconstrained)
+    early_cc_water, early_cc_co2 = aggregate_data(early_country_constrained)
+    early_cu_water, early_cu_co2 = aggregate_data(early_country_unconstrained)
+    early_rc_water, early_rc_co2 = aggregate_data(early_region_constrained)
+    early_ru_water, early_ru_co2 = aggregate_data(early_region_unconstrained)
+    prec_cc_water, prec_cc_co2 = aggregate_data(precursor_country_constrained)
+    prec_cu_water, prec_cu_co2 = aggregate_data(precursor_country_unconstrained)
+    prec_rc_water, prec_rc_co2 = aggregate_data(precursor_region_constrained)
+    prec_ru_water, prec_ru_co2 = aggregate_data(precursor_region_unconstrained)
+
+    # Create 10 bars (NO baseline)
+    water_bars = [
+        ("Constrained", bau_c_water),
+        ("Unconstrained", bau_u_water),
+        ("Country Constrained", early_cc_water),
+        ("Country Unconstrained", early_cu_water),
+        ("Region Constrained", early_rc_water),
+        ("Region Unconstrained", early_ru_water),
+        ("Country Constrained", prec_cc_water),
+        ("Country Unconstrained", prec_cu_water),
+        ("Region Constrained", prec_rc_water),
+        ("Region Unconstrained", prec_ru_water),
+    ]
+
+    co2_bars = [
+        ("Constrained", bau_c_co2),
+        ("Unconstrained", bau_u_co2),
+        ("Country Constrained", early_cc_co2),
+        ("Country Unconstrained", early_cu_co2),
+        ("Region Constrained", early_rc_co2),
+        ("Region Unconstrained", early_ru_co2),
+        ("Country Constrained", prec_cc_co2),
+        ("Country Unconstrained", prec_cu_co2),
+        ("Region Constrained", prec_rc_co2),
+        ("Region Unconstrained", prec_ru_co2),
+    ]
+
+    return water_bars, co2_bars
+
+
+def extract_transport_volume_data_comparison(df):
+    """
+    Extract both constrained and unconstrained transport volume data for 2040 scenarios (NO baseline).
+
+    Returns 10 bars: BAU (C+U), Early Refining (CC+CU+RC+RU), Precursor (CC+CU+RC+RU)
+
+    Returns:
+        transport_bars: List of 10 tuples (label, [cobalt, copper, graphite, lithium, manganese, nickel]) in million tonne-km
+    """
+    minerals = ['cobalt', 'copper', 'graphite', 'lithium', 'manganese', 'nickel']
+
+    # BAU 2040 - Constrained and Unconstrained
+    bau_constrained = df[(df['scenario'] == 'bau_2040_mid_min_threshold_metal_tons') &
+                         (df['constraint'] == 'country_constrained') &
+                         (df['year'] == 2040)].copy()
+
+    bau_unconstrained = df[(df['scenario'] == 'bau_2040_mid_min_threshold_metal_tons') &
+                           (df['constraint'] == 'country_unconstrained') &
+                           (df['year'] == 2040)].copy()
+
+    # Early Refining 2040 - All 4 combinations
+    early_country_constrained = df[(df['scenario'] == 'early_refining_2040_mid_min_threshold_metal_tons') &
+                                   (df['constraint'] == 'country_constrained') &
+                                   (df['year'] == 2040)].copy()
+
+    early_country_unconstrained = df[(df['scenario'] == 'early_refining_2040_mid_min_threshold_metal_tons') &
+                                     (df['constraint'] == 'country_unconstrained') &
+                                     (df['year'] == 2040)].copy()
+
+    early_region_constrained = df[(df['scenario'] == 'early_refining_2040_mid_max_threshold_metal_tons') &
+                                  (df['constraint'] == 'region_constrained') &
+                                  (df['year'] == 2040)].copy()
+
+    early_region_unconstrained = df[(df['scenario'] == 'early_refining_2040_mid_max_threshold_metal_tons') &
+                                    (df['constraint'] == 'region_unconstrained') &
+                                    (df['year'] == 2040)].copy()
+
+    # Precursor 2040 - All 4 combinations
+    precursor_country_constrained = df[(df['scenario'] == 'precursor_2040_mid_min_threshold_metal_tons') &
+                                       (df['constraint'] == 'country_constrained') &
+                                       (df['year'] == 2040)].copy()
+
+    precursor_country_unconstrained = df[(df['scenario'] == 'precursor_2040_mid_min_threshold_metal_tons') &
+                                         (df['constraint'] == 'country_unconstrained') &
+                                         (df['year'] == 2040)].copy()
+
+    precursor_region_constrained = df[(df['scenario'] == 'precursor_2040_mid_max_threshold_metal_tons') &
+                                      (df['constraint'] == 'region_constrained') &
+                                      (df['year'] == 2040)].copy()
+
+    precursor_region_unconstrained = df[(df['scenario'] == 'precursor_2040_mid_max_threshold_metal_tons') &
+                                        (df['constraint'] == 'region_unconstrained') &
+                                        (df['year'] == 2040)].copy()
+
+    # Aggregate transport volume for each scenario
+    def aggregate_transport(data_frame):
+        transport = data_frame.groupby('reference_mineral')['transport_total_tonkm'].sum() / 1e6
+        return [transport.get(m, 0) for m in minerals]
+
+    bau_c_transport = aggregate_transport(bau_constrained)
+    bau_u_transport = aggregate_transport(bau_unconstrained)
+    early_cc_transport = aggregate_transport(early_country_constrained)
+    early_cu_transport = aggregate_transport(early_country_unconstrained)
+    early_rc_transport = aggregate_transport(early_region_constrained)
+    early_ru_transport = aggregate_transport(early_region_unconstrained)
+    prec_cc_transport = aggregate_transport(precursor_country_constrained)
+    prec_cu_transport = aggregate_transport(precursor_country_unconstrained)
+    prec_rc_transport = aggregate_transport(precursor_region_constrained)
+    prec_ru_transport = aggregate_transport(precursor_region_unconstrained)
+
+    # Create 10 bars (NO baseline)
+    transport_bars = [
+        ("Constrained", bau_c_transport),
+        ("Unconstrained", bau_u_transport),
+        ("Country Constrained", early_cc_transport),
+        ("Country Unconstrained", early_cu_transport),
+        ("Region Constrained", early_rc_transport),
+        ("Region Unconstrained", early_ru_transport),
+        ("Country Constrained", prec_cc_transport),
+        ("Country Unconstrained", prec_cu_transport),
+        ("Region Constrained", prec_rc_transport),
+        ("Region Unconstrained", prec_ru_transport),
+    ]
+
+    return transport_bars
+
+
+def plot_water_single_axis_comparison(df, output_dir):
+    """Generate comparison chart with both constrained and unconstrained (10 bars, no baseline)"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    water_bars, _ = extract_emissions_water_data_comparison(df)
+
+    # Centers for 10 bars: [BAU×2] [Early×4] [Precursor×4]
+    centers = [(0+1)/2, (2+3+4+5)/4, (6+7+8+9)/4]
+    headings = ["BAU (2040)", "Early Refining (2040)", "Precursor Product (2040)"]
+
+    water_path = os.path.join(output_dir, "water_single_axis_constrained_vs_unconstrained.png")
+    plot_clean_stacks(
+        bars=water_bars,
+        ylabel="Water use (million m³)",
+        total_fmt=lambda v: f"{int(round(v,0))}",
+        seg_label_threshold=28,
+        centers=centers,
+        headings=headings,
+        outfile=water_path
+    )
+
+    return [water_path]
+
+
+def plot_emissions_single_axis_comparison(df, output_dir):
+    """Generate comparison chart with both constrained and unconstrained (10 bars, no baseline)"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    _, co2_bars = extract_emissions_water_data_comparison(df)
+
+    # Centers for 10 bars: [BAU×2] [Early×4] [Precursor×4]
+    centers = [(0+1)/2, (2+3+4+5)/4, (6+7+8+9)/4]
+    headings = ["BAU (2040)", "Early Refining (2040)", "Precursor Product (2040)"]
+
+    co2_path = os.path.join(output_dir, "co2_single_axis_constrained_vs_unconstrained.png")
+    plot_clean_stacks(
+        bars=co2_bars,
+        ylabel="Megatonne CO₂e",
+        total_fmt=lambda v: f"{v:.2f}",
+        seg_label_threshold=0.03,
+        centers=centers,
+        headings=headings,
+        outfile=co2_path
+    )
+
+    return [co2_path]
+
+
+def plot_transport_volume_single_axis_comparison(df, output_dir):
+    """Generate comparison chart with both constrained and unconstrained (10 bars, no baseline)"""
+    os.makedirs(output_dir, exist_ok=True)
+
+    transport_bars = extract_transport_volume_data_comparison(df)
+
+    # Centers for 10 bars: [BAU×2] [Early×4] [Precursor×4]
+    centers = [(0+1)/2, (2+3+4+5)/4, (6+7+8+9)/4]
+    headings = ["BAU (2040)", "Early Refining (2040)", "Precursor Product (2040)"]
+
+    transport_path = os.path.join(output_dir, "transport_volume_single_axis_constrained_vs_unconstrained.png")
+    plot_clean_stacks(
+        bars=transport_bars,
+        ylabel="Transport Volume (Million tonne km)",
+        total_fmt=lambda v: f"{int(round(v,0))}",
+        seg_label_threshold=300,  # 300 million tonkm
+        centers=centers,
+        headings=headings,
+        outfile=transport_path
+    )
+
+    return [transport_path]
