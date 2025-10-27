@@ -865,15 +865,71 @@ def create_supply_curve_scenario_subplots(df, output_dir):
     return saved_paths
 
 
+def get_valid_cost_stages_for_supply_curves(df_country_mineral, scenario_config):
+    """
+    Determine which stages should contribute costs using production chain validation.
+
+    Identical to the function in plot_competitiveness_summary.py - validates production chain
+    to include intermediate stages with costs but zero production (consumed internally).
+
+    Parameters:
+    -----------
+    df_country_mineral : pd.DataFrame
+        Data for single country-mineral-scenario combination
+    scenario_config : dict
+        Scenario configuration with included_types
+
+    Returns:
+    --------
+    list of float
+        Processing stage numbers to include in cumulative cost calculation
+    """
+    # Find all stages with actual production
+    production_stages = df_country_mineral[
+        df_country_mineral['production_tonnes'] > 0
+    ]['processing_stage'].unique()
+
+    if len(production_stages) == 0:
+        return []
+
+    max_production_stage = max(production_stages)
+
+    # Build list of valid cost stages (by stage number, not type)
+    valid_stages = []
+
+    # Filter to only included processing types
+    included_data = df_country_mineral[
+        df_country_mineral['processing_type'].isin(scenario_config['included_types'])
+    ]
+
+    for _, row in included_data.iterrows():
+        stage_num = row['processing_stage']
+        has_production = row['production_tonnes'] > 0
+        has_cost = row['production_transport_energy_unit_cost_usd_per_tonne'] > 0
+
+        if not has_cost:
+            continue
+
+        # Include if:
+        # A) Stage has production, OR
+        # B) Stage is intermediate (< max production stage) with costs
+        if has_production or (stage_num < max_production_stage):
+            valid_stages.append(stage_num)
+
+    return valid_stages
+
+
 def create_supply_curve_cumulative_costs(df, output_dir):
     """
     Create supply curve plots with cumulative costs through the processing chain.
-    
+
     This creates one figure per mineral/constraint combination with 3 horizontal subplots:
     - BAU: Beneficiation stage only
     - Early Refining: Cumulative costs up to Early refining stages
     - Precursor: Cumulative costs through all stages
-    
+
+    Uses production chain validation to correctly handle intermediate stages.
+
     Parameters:
     -----------
     df : pd.DataFrame
@@ -884,11 +940,10 @@ def create_supply_curve_cumulative_costs(df, output_dir):
     # Use the output directory directly (caller should provide cumulative_costs path if needed)
     cumulative_output_dir = output_dir
     os.makedirs(cumulative_output_dir, exist_ok=True)
-    
-    # Filter for relevant data
+
+    # Filter for relevant data - relaxed to include intermediate stages with zero production
     df_filtered = df[
         (df["processing_stage"] > 0) &  # Only processed stages
-        (df["production_tonnes"] > 0) &  # Only countries with production
         (df["production_transport_energy_unit_cost_usd_per_tonne"] > 0) &  # Only with cost data
         (df["scenario"].str.contains("2040")) &  # Only 2040 scenarios
         (
@@ -967,32 +1022,32 @@ def create_supply_curve_cumulative_costs(df, output_dir):
                 
                 # Calculate cumulative costs for each country
                 country_cumulative_data = []
-                
+
                 for country in scenario_data["iso3"].unique():
                     country_scenario_data = scenario_data[scenario_data["iso3"] == country]
-                    
+
                     # Get production from the target processing type (use production_tonnes_for_costs)
                     target_production = country_scenario_data[
                         country_scenario_data["processing_type"] == config['target_type']
                     ]["production_tonnes_for_costs"].sum()
-                    
+
                     # Skip if no production at target stage
                     if target_production == 0:
                         continue
-                    
-                    # Calculate cumulative costs from all included processing types
-                    included_data = country_scenario_data[
-                        country_scenario_data["processing_type"].isin(config['included_types'])
-                    ]
-                    
-                    # Sum unit costs directly across included stages (following old new_bar_charts.py approach)
-                    if not included_data.empty:
-                        cumulative_unit_cost = 0
-                        for _, row in included_data.iterrows():
-                            stage_unit_cost = row["production_transport_energy_unit_cost_usd_per_tonne"]
-                            cumulative_unit_cost += stage_unit_cost
-                    else:
+
+                    # Get valid stages using production chain validation
+                    valid_stages = get_valid_cost_stages_for_supply_curves(country_scenario_data, config)
+
+                    if not valid_stages:
                         continue
+
+                    # Calculate cumulative costs from valid stages only
+                    cumulative_unit_cost = 0
+                    for stage_num in valid_stages:
+                        stage_data = country_scenario_data[country_scenario_data["processing_stage"] == stage_num]
+                        if not stage_data.empty:
+                            stage_cost = stage_data["production_transport_energy_unit_cost_usd_per_tonne"].iloc[0]
+                            cumulative_unit_cost += stage_cost
                     
                     country_cumulative_data.append({
                         'iso3': country,

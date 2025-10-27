@@ -46,6 +46,7 @@ from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_go
 from plot_supply_curves import create_supply_curves, create_supply_curve_scenario_subplots, create_supply_curve_cumulative_costs
 from plot_production_differences import generate_essential_difference_plots
 from plot_revenue_differences import generate_essential_revenue_difference_plots
+from plot_competitiveness_summary import create_competitiveness_heatmaps
 
 def run_plot_production(df, output_dir, config):
     # Updated for new scenario structure - goals are determined by scenario name, not year
@@ -312,6 +313,12 @@ def run_single_axis_all(df, output_dir, config):
     print(f"All single-axis charts saved to: {single_axis_dir}")
     print("=" * 80)
 
+def run_competitiveness_summary(df, output_dir, config):
+    """Generate competitiveness heatmap summary visualizations"""
+    print("Generating competitiveness heatmaps...")
+    saved_paths = create_competitiveness_heatmaps(df, output_dir)
+    print(f"Competitiveness heatmaps completed. Generated {len(saved_paths)} figures.")
+
 AVAILABLE_PLOTS = {
     "revenue_gdp_share": run_plot_revenue,
     "value_addition_gdp_share": run_plot_value_addition,
@@ -326,7 +333,8 @@ AVAILABLE_PLOTS = {
     "supply_curves": run_supply_curves,
     "production_differences": run_production_differences,
     "revenue_differences": run_revenue_differences,
-    "single_axis_all": run_single_axis_all
+    "single_axis_all": run_single_axis_all,
+    "competitiveness_summary": run_competitiveness_summary
 }
 
 PLOT_GROUPS = {
@@ -334,13 +342,13 @@ PLOT_GROUPS = {
         "production_all_countries", "emissions_all_countries", "water_all_countries",
         "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons",
         "goal_comparisons_all_countries", "supply_curves", "production_differences", "revenue_differences",
-        "single_axis_all"
+        "single_axis_all", "competitiveness_summary"
     ],
     "single_countries": ["single_country_all", "country_differences"],
     "core": ["production_all_countries", "emissions_all_countries", "goal_comparisons_all_countries"],
     "reports": ["country_docx_reports"],
     "goal_analysis": ["goal_comparisons_all_countries"],
-    "supply_analysis": ["supply_curves"],
+    "supply_analysis": ["supply_curves", "competitiveness_summary"],
     "difference_analysis": ["production_differences", "revenue_differences"]
 }
 
