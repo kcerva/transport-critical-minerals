@@ -28,3 +28,16 @@ docs/_build
 CLAUDE.md
 competitive_visualization_alternatives_analysis.md
 CLAUDE_MD_ADDITIONS.md
+
+# Analysis/debug files
+*_ANALYSIS.md
+*_README.md
+*_SUMMARY.md
+*_PLAN.md
+*_CORRECTED.md
+debug_*.py
+scripts/automated_plot/check_*.py
+scripts/automated_plot/debug_*.py
+scripts/automated_plot/verify_*.py
+scripts/automated_plot/plot_emissions_water_simple.py
+scripts/automated_plot/plot_revenue_simple.py
