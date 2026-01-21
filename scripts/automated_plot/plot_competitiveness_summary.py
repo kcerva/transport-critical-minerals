@@ -312,9 +312,32 @@ def format_cost_annotation(cost, rank):
     return f"${cost_k}k\n#{int(rank)}"
 
 
+def format_rank_only_annotation(cost, rank):
+    """
+    Format rank only for cell annotation (no cost).
+
+    Parameters:
+    -----------
+    cost : float
+        Cumulative unit cost (USD/tonne) - not used but kept for consistency
+    rank : int
+        Rank within mineral (1 = best)
+
+    Returns:
+    --------
+    str
+        Formatted annotation string with rank only
+    """
+    if pd.isna(rank):
+        return "—"
+
+    # Single line format: rank only
+    return f"#{int(rank)}"
+
+
 def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national, rank_matrix_national,
                                   cost_matrix_regional, quintile_matrix_regional, rank_matrix_regional,
-                                  scenario_title, output_path):
+                                  scenario_title, output_path, rank_only=False):
     """
     Create side-by-side heatmaps for National and Regional constraints.
 
@@ -328,6 +351,8 @@ def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national,
         Scenario name for figure title
     output_path : str
         Path to save figure
+    rank_only : bool
+        If True, show only rank numbers. If False, show both cost and rank (default)
     """
     # Create figure with 2 subplots (side-by-side)
     fig, axes = plt.subplots(1, 2, figsize=(20, 12))
@@ -339,6 +364,9 @@ def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national,
     # Define consistent vmin/vmax for color scale (1-5 for quintiles)
     vmin, vmax = 1, 5
 
+    # Select annotation formatter based on rank_only parameter
+    annotation_func = format_rank_only_annotation if rank_only else format_cost_annotation
+
     # Plot National Focus (left)
     ax_national = axes[0]
 
@@ -348,7 +376,7 @@ def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national,
         for j in range(cost_matrix_national.shape[1]):
             cost = cost_matrix_national.iloc[i, j]
             rank = rank_matrix_national.iloc[i, j]
-            annot_national[i, j] = format_cost_annotation(cost, rank)
+            annot_national[i, j] = annotation_func(cost, rank)
 
     # Plot heatmap with quintile colors, but annotate with cost+rank
     sns.heatmap(
@@ -363,17 +391,23 @@ def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national,
         linewidths=0.5,
         linecolor='gray',
         square=False,
-        annot_kws={'fontsize': 9, 'va': 'center'},
+        annot_kws={'fontsize': 16, 'va': 'center'},
         cbar=True,
         mask=quintile_matrix_national.isna()  # Mask missing data
     )
 
+    # Increase colorbar label font size
+    cbar_national = ax_national.collections[0].colorbar
+    cbar_national.set_label('Competitiveness Quintile\n(Darker = More Competitive)',
+                            fontsize=15, fontweight='bold')
+    cbar_national.ax.tick_params(labelsize=13)  # Also increase colorbar tick labels
+
     ax_national.set_title(CONSTRAINT_LABELS['country_unconstrained'],
-                         fontsize=14, fontweight='bold', pad=15)
-    ax_national.set_xlabel('Mineral', fontsize=12, fontweight='bold')
-    ax_national.set_ylabel('Country (ISO3)', fontsize=12, fontweight='bold')
-    ax_national.set_yticklabels(ax_national.get_yticklabels(), rotation=0)
-    ax_national.set_xticklabels([m.capitalize() for m in MINERAL_ORDER], rotation=45, ha='right')
+                         fontsize=18, fontweight='bold', pad=15)
+    ax_national.set_xlabel('Mineral', fontsize=17, fontweight='bold')
+    ax_national.set_ylabel('Country (ISO3)', fontsize=17, fontweight='bold')
+    ax_national.set_yticklabels(ax_national.get_yticklabels(), rotation=0, fontsize=18)
+    ax_national.set_xticklabels([m.capitalize() for m in MINERAL_ORDER], rotation=0, ha='center', fontsize=15)
 
     # Plot Regional Integration (right)
     ax_regional = axes[1]
@@ -384,7 +418,7 @@ def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national,
         for j in range(cost_matrix_regional.shape[1]):
             cost = cost_matrix_regional.iloc[i, j]
             rank = rank_matrix_regional.iloc[i, j]
-            annot_regional[i, j] = format_cost_annotation(cost, rank)
+            annot_regional[i, j] = annotation_func(cost, rank)
 
     # Plot heatmap
     sns.heatmap(
@@ -399,29 +433,42 @@ def plot_competitiveness_heatmap(cost_matrix_national, quintile_matrix_national,
         linewidths=0.5,
         linecolor='gray',
         square=False,
-        annot_kws={'fontsize': 9, 'va': 'center'},
+        annot_kws={'fontsize': 16, 'va': 'center'},
         cbar=True,
         mask=quintile_matrix_regional.isna()
     )
 
+    # Increase colorbar label font size
+    cbar_regional = ax_regional.collections[0].colorbar
+    cbar_regional.set_label('Competitiveness Quintile\n(Darker = More Competitive)',
+                            fontsize=15, fontweight='bold')
+    cbar_regional.ax.tick_params(labelsize=13)  # Also increase colorbar tick labels
+
     ax_regional.set_title(CONSTRAINT_LABELS['region_unconstrained'],
-                         fontsize=14, fontweight='bold', pad=15)
-    ax_regional.set_xlabel('Mineral', fontsize=12, fontweight='bold')
+                         fontsize=18, fontweight='bold', pad=15)
+    ax_regional.set_xlabel('Mineral', fontsize=17, fontweight='bold')
     ax_regional.set_ylabel('')  # No y-label on right plot
-    ax_regional.set_yticklabels(ax_regional.get_yticklabels(), rotation=0)
-    ax_regional.set_xticklabels([m.capitalize() for m in MINERAL_ORDER], rotation=45, ha='right')
+    ax_regional.set_yticklabels(ax_regional.get_yticklabels(), rotation=0, fontsize=18)
+    ax_regional.set_xticklabels([m.capitalize() for m in MINERAL_ORDER], rotation=0, ha='center', fontsize=15)
 
     # Main title
-    fig.suptitle(f'Competitiveness Matrix: {scenario_title} (2040)',
-                fontsize=18, fontweight='bold', y=0.98)
+    fig.suptitle(f'{scenario_title} (2040)',
+                fontsize=22, fontweight='bold', y=0.98)
 
     # Add interpretation note at bottom
-    note_text = (
-        "Colors show within-mineral quintile rankings (Q1-Q5). Darker green = more competitive (lower cost).\n"
-        "Cell annotations: Cost in thousands (USD/tonne) / Rank (#1 = lowest cost).\n"
-        "Costs are cumulative unit costs (production + transport + energy) for all processing stages up to scenario target."
-    )
-    fig.text(0.5, 0.01, note_text, ha='center', fontsize=10, style='italic',
+    if rank_only:
+        note_text = (
+            "Colors show within-mineral quintile rankings (Q1-Q5). Darker green = more competitive (lower cost).\n"
+            "Cell annotations: Rank only (#1 = lowest cost).\n"
+            "Rankings based on cumulative unit costs (production + transport + energy) for all processing stages up to scenario target."
+        )
+    else:
+        note_text = (
+            "Colors show within-mineral quintile rankings (Q1-Q5). Darker green = more competitive (lower cost).\n"
+            "Cell annotations: Cost in thousands (USD/tonne) / Rank (#1 = lowest cost).\n"
+            "Costs are cumulative unit costs (production + transport + energy) for all processing stages up to scenario target."
+        )
+    fig.text(0.5, 0.01, note_text, ha='center', fontsize=12, style='italic',
              wrap=True, color='gray')
 
     # Adjust layout
@@ -494,16 +541,27 @@ def create_competitiveness_heatmaps(df, output_dir):
         cost_nat, quintile_nat, rank_nat = create_heatmap_matrix(df_national, countries)
         cost_reg, quintile_reg, rank_reg = create_heatmap_matrix(df_regional, countries)
 
-        # Plot heatmap
+        # Plot heatmap with costs and ranks
         output_path = os.path.join(competitiveness_dir, f"competitiveness_heatmap_{scenario_key}.png")
         plot_competitiveness_heatmap(
             cost_nat, quintile_nat, rank_nat,
             cost_reg, quintile_reg, rank_reg,
             config['title'],
-            output_path
+            output_path,
+            rank_only=False
         )
-
         saved_paths.append(output_path)
+
+        # Plot heatmap with ranks only (no costs)
+        output_path_rank_only = os.path.join(competitiveness_dir, f"competitiveness_heatmap_{scenario_key}_rank_only.png")
+        plot_competitiveness_heatmap(
+            cost_nat, quintile_nat, rank_nat,
+            cost_reg, quintile_reg, rank_reg,
+            config['title'],
+            output_path_rank_only,
+            rank_only=True
+        )
+        saved_paths.append(output_path_rank_only)
 
     print("\n" + "=" * 80)
     print(f"Competitiveness heatmaps completed. Saved {len(saved_paths)} figures.")

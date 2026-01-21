@@ -321,6 +321,112 @@ def prepare_country_gdp_data(df):
     return country_gdp_data
 
 
+def prepare_country_net_export_revenue_gdp_data(df):
+    """
+    Prepare country-level NET export revenue GDP share data for heatmap visualization
+
+    Uses net export revenue (export revenue - import cost) instead of gross export revenue
+
+    Returns:
+        dict: {scenario_label: {demand: {country_iso3: gdp_share_pct}}}
+              where scenario_label is like 'BAU_C', 'Prec_C_N', etc.
+    """
+    import json
+    from pathlib import Path
+
+    # Load config to get paths
+    config_path = Path(__file__).parent.parent.parent / 'config.json'
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    results_path = Path(config['paths']['results'])
+    flows_path = results_path / 'tonnage_flows_with_revenues.xlsx'
+
+    # Load tonnage flows data
+    df_flows = pd.read_excel(flows_path, sheet_name='All_Flows')
+
+    # Get GDP data with inflation adjustment
+    df_gdp = adjust_gdp_for_inflation(df.copy())
+    # NOTE: GDP is repeated on each row for same country/scenario, so take max (unique non-zero value)
+    # Using .first() can pick a row with GDP=0 if that row has no export revenue
+    # Scenario names include year (e.g., '2022_baseline', 'bau_2040_mid_min_threshold_metal_tons')
+    # so grouping by ['iso3', 'scenario'] already separates years - .max() is safe
+    gdp_by_country_scenario = df_gdp.groupby(['iso3', 'scenario'])['gdp_usd'].max().to_dict()
+
+    country_net_revenue_data = {}
+
+    for goal, policy, constraint, label in SCENARIO_CONFIG:
+        country_net_revenue_data[label] = {'low': {}, 'mid': {}, 'high': {}}
+
+        # Handle baseline scenario (no demand variants)
+        if goal == 'baseline':
+            scenario_name = '2022_baseline'
+            constraint_col = 'country_unconstrained'
+
+            # Filter for baseline
+            df_scenario = df_flows[
+                (df_flows['scenario'] == scenario_name) &
+                (df_flows['constraint'] == constraint_col)
+            ].copy()
+
+            if df_scenario.empty:
+                continue
+
+            # Calculate net export revenue by country
+            exports = df_scenario[df_scenario['trade_type'] == 'Export'].groupby('iso3')['export_revenue_usd'].sum()
+            imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('iso3')['import_cost_at_price_usd'].sum()
+
+            # Get all countries
+            all_countries = set(exports.index) | set(imports.index)
+
+            for country in all_countries:
+                export_rev = exports.get(country, 0)
+                import_cost = imports.get(country, 0)
+                net_revenue = export_rev - import_cost
+
+                gdp = gdp_by_country_scenario.get((country, scenario_name), 0)
+
+                if gdp > 0:
+                    gdp_pct = (net_revenue / gdp) * 100
+                    # Use same data for low/mid/high (no demand uncertainty for baseline)
+                    for demand in ['low', 'mid', 'high']:
+                        country_net_revenue_data[label][demand][country] = gdp_pct
+
+        else:
+            # Handle BAU and Precursor scenarios with demand variants
+            for demand in ['low', 'mid', 'high']:
+                scenario_name = f'{goal}_2040_{demand}_{policy}_threshold_metal_tons'
+                constraint_col = f'country_{constraint}' if policy == 'min' else f'region_{constraint}'
+
+                df_scenario = df_flows[
+                    (df_flows['scenario'] == scenario_name) &
+                    (df_flows['constraint'] == constraint_col)
+                ].copy()
+
+                if df_scenario.empty:
+                    continue
+
+                # Calculate net export revenue by country
+                exports = df_scenario[df_scenario['trade_type'] == 'Export'].groupby('iso3')['export_revenue_usd'].sum()
+                imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('iso3')['import_cost_at_price_usd'].sum()
+
+                # Get all countries
+                all_countries = set(exports.index) | set(imports.index)
+
+                for country in all_countries:
+                    export_rev = exports.get(country, 0)
+                    import_cost = imports.get(country, 0)
+                    net_revenue = export_rev - import_cost
+
+                    gdp = gdp_by_country_scenario.get((country, scenario_name), 0)
+
+                    if gdp > 0:
+                        gdp_pct = (net_revenue / gdp) * 100
+                        country_net_revenue_data[label][demand][country] = gdp_pct
+
+    return country_net_revenue_data
+
+
 def calculate_gdp_difference_matrix(country_gdp_data):
     """
     Calculate Regional - National GDP share differences for heatmap
@@ -1064,6 +1170,160 @@ def create_economic_indicators_figure(df, output_dir):
     return saved_paths
 
 
+def create_economic_indicators_figure_net_revenue(df, output_dir):
+    """
+    Generate economic indicators comparison figure with NET export revenue for Panel C
+
+    Same as create_economic_indicators_figure() but Panel C uses net export revenue
+    (export revenue - import cost) instead of gross export revenue
+
+    Args:
+        df: Main data DataFrame
+        output_dir: Output directory for figure
+
+    Returns:
+        List of saved file paths
+    """
+    print("  Generating economic indicators five-panel figure (with net export revenue)...")
+
+    # Apply publication style
+    plt.style.use('default')
+    for key, value in PUBLICATION_STYLE.items():
+        plt.rcParams[key] = value
+
+    # Prepare data (same as regular version for panels A, B, D, E, F)
+    revenue_mineral_data, revenue_processing_data, gdp_share_data, cost_mineral_data, cost_breakdown_data = prepare_economic_data(df)
+
+    # Prepare country-level NET export revenue GDP data for heatmap (Panel C)
+    country_gdp_data = prepare_country_net_export_revenue_gdp_data(df)
+    difference_data, countries_sorted = calculate_gdp_difference_matrix(country_gdp_data)
+
+    # Create figure with nested GridSpecs for independent row width control
+    fig = plt.figure(figsize=(17, 17))
+
+    # Main GridSpec: 3 rows × 1 column (controls vertical layout only)
+    main_gs = fig.add_gridspec(3, 1,
+                               height_ratios=[1, 1, 1.9],  # Row 3 significantly taller for heatmaps
+                               hspace=0.30,
+                               left=0.08, right=0.95, top=0.94, bottom=0.10)  # Increased for Panel F x-axis labels
+
+    # Row 1: Panels A & B with equal widths (50/50)
+    row1_gs = main_gs[0].subgridspec(1, 2, wspace=0.45)
+    ax_rev_mineral = fig.add_subplot(row1_gs[0, 0])
+    ax_cost_mineral = fig.add_subplot(row1_gs[0, 1])
+
+    # Row 2: Panels D & E with equal widths (50/50)
+    row2_gs = main_gs[1].subgridspec(1, 2, wspace=0.45)
+    ax_rev_processing = fig.add_subplot(row2_gs[0, 0])
+    ax_cost_breakdown = fig.add_subplot(row2_gs[0, 1])
+
+    # Row 3: Panels C & F with custom widths (Panel C narrower, Panel F wider for mineral names)
+    row3_gs = main_gs[2].subgridspec(1, 2, wspace=0.35, width_ratios=[0.7, 1.3])
+    ax_gdp = fig.add_subplot(row3_gs[0, 0])
+    ax_competitiveness = fig.add_subplot(row3_gs[0, 1])
+
+    # Plot Top Panel (Revenue by Mineral)
+    y_positions = plot_stacked_revenue_panel(
+        ax_rev_mineral, revenue_mineral_data,
+        stack_order=MINERAL_ORDER,
+        colors=reference_mineral_colormap,
+        title='A) Export Revenue by Mineral',
+        xlabel='Revenue (Billion USD)'
+    )
+
+    # Plot Middle Panel (Revenue by Processing Type)
+    plot_stacked_revenue_panel(
+        ax_rev_processing, revenue_processing_data,
+        stack_order=PROCESSING_ORDER,
+        colors=PROCESSING_TYPE_COLORS,
+        title='B) Export Revenue by Processing Type',
+        xlabel='Revenue (Billion USD)'
+    )
+
+    # Plot Panel C (NET Export Revenue GDP Share - HEATMAP showing Regional vs National impact)
+    plot_gdp_difference_heatmap(
+        ax_gdp, difference_data, countries_sorted,
+        title='C) Net Export Revenue as Share of GDP - Regional vs National',
+        significant_threshold=2.0  # Mark changes > 2 percentage points as significant
+    )
+
+    # Plot Panel D (Cost by Mineral)
+    plot_stacked_revenue_panel(
+        ax_cost_mineral, cost_mineral_data,
+        stack_order=MINERAL_ORDER,
+        colors=reference_mineral_colormap,
+        title='D) Total Cost by Mineral',
+        xlabel='Cost (Billion USD)'
+    )
+
+    # Plot Panel E (Total Cost by Component)
+    plot_stacked_revenue_panel(
+        ax_cost_breakdown, cost_breakdown_data,
+        stack_order=COST_TYPE_ORDER,
+        colors=COST_TYPE_COLORS,
+        title='E) Total Cost by Component',
+        xlabel='Cost (Billion USD)'
+    )
+
+    # Plot Panel F (Competitiveness Matrix for Precursor Unconstrained)
+    plot_competitiveness_panel(ax_competitiveness, df)
+
+    # Ensure consistent x-axis limits for all revenue and cost panels
+    # Get the maximum xlim across all four panels (A, B, D, E)
+    max_xlim = max(
+        ax_rev_mineral.get_xlim()[1],
+        ax_rev_processing.get_xlim()[1],
+        ax_cost_mineral.get_xlim()[1],
+        ax_cost_breakdown.get_xlim()[1]
+    )
+    # Apply the same limit to all panels
+    ax_rev_mineral.set_xlim(0, max_xlim)
+    ax_rev_processing.set_xlim(0, max_xlim)
+    ax_cost_mineral.set_xlim(0, max_xlim)
+    ax_cost_breakdown.set_xlim(0, max_xlim)
+
+    # Set y-axis labels (scenario names on left) for bar chart panels
+    y_labels = [label for _, _, _, label in SCENARIO_CONFIG]
+    ax_rev_mineral.set_yticklabels(y_labels, fontsize=9)
+    ax_rev_processing.set_yticklabels(y_labels, fontsize=9)
+    # ax_gdp has its own country labels (heatmap)
+    ax_cost_mineral.set_yticklabels(y_labels, fontsize=9)
+    ax_cost_breakdown.set_yticklabels(y_labels, fontsize=9)
+
+    # Add overall title (y parameter controls distance from top)
+    fig.suptitle('Economic Indicators',
+                #  + '(Mid-demand with Low-High range)',
+                 fontsize=14, fontweight='bold', y=0.98)
+
+    # Create comprehensive legend (excluding Panel F which has its own colorbar)
+    create_comprehensive_legend(fig, ax_rev_mineral, ax_rev_processing, ax_gdp, ax_cost_mineral, ax_cost_breakdown)
+
+    # Save figure
+    saved_paths = []
+
+    # High-res PNG for publication
+    png_path = os.path.join(output_dir, 'economic_indicators_six_panel_net_revenue.png')
+    plt.savefig(png_path, dpi=DPI_PUBLICATION, bbox_inches='tight', facecolor='white')
+    saved_paths.append(png_path)
+    print(f"    ✓ Saved: {os.path.basename(png_path)}")
+
+    # PDF for vector graphics
+    pdf_path = os.path.join(output_dir, 'economic_indicators_six_panel_net_revenue.pdf')
+    plt.savefig(pdf_path, format='pdf', bbox_inches='tight', facecolor='white')
+    saved_paths.append(pdf_path)
+    print(f"    ✓ Saved: {os.path.basename(pdf_path)}")
+
+    # Low-res PNG for quick preview
+    preview_path = os.path.join(output_dir, 'economic_indicators_six_panel_net_revenue_preview.png')
+    plt.savefig(preview_path, dpi=DPI_SCREEN, bbox_inches='tight', facecolor='white')
+    saved_paths.append(preview_path)
+    print(f"    ✓ Saved: {os.path.basename(preview_path)}")
+
+    plt.close(fig)
+
+    return saved_paths
+
+
 def generate_economic_indicators_figures(df, output_dir):
     """
     Main entry point for generating economic indicators figures
@@ -1075,8 +1335,12 @@ def generate_economic_indicators_figures(df, output_dir):
     Returns:
         List of saved file paths
     """
-    # Generate main six-panel figure
+    # Generate main six-panel figure (with gross export revenue)
     saved_paths = create_economic_indicators_figure(df, output_dir)
+
+    # Generate six-panel figure with net export revenue
+    net_revenue_paths = create_economic_indicators_figure_net_revenue(df, output_dir)
+    saved_paths.extend(net_revenue_paths)
 
     # Generate SI GDP heatmaps
     try:

@@ -25,35 +25,67 @@ def create_all_data_from_combined_transport_file(input_file_path, output_file_pa
     
     print(f"Combined data shape: {df_list.shape}")
     print(f"Columns: {list(df_list.columns)}")
-    
-    # Unit cost calculations - now including energy components
-    unit_costs = [
-                    "export_transport_cost_usd_per_tonne",
-                    "import_transport_cost_usd_per_tonne",
-                    "production_cost_usd_per_tonne",
-                    "energy_opex_per_tonne",
-                    "energy_investment_usd_per_tonne"
+
+    # Check if energy data is available
+    has_energy = all(col in df_list.columns for col in ['energy_opex_per_tonne', 'energy_investment_usd_per_tonne',
+                                                          'energy_opex', 'energy_investment_usd'])
+
+    if has_energy:
+        print("Energy data detected - including in cost calculations")
+        # Unit cost calculations - including energy components
+        unit_costs = [
+                        "export_transport_cost_usd_per_tonne",
+                        "import_transport_cost_usd_per_tonne",
+                        "production_cost_usd_per_tonne",
+                        "energy_opex_per_tonne",
+                        "energy_investment_usd_per_tonne"
+                    ]
+
+        # Calculate total unit cost - including energy components
+        df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(
+            df_list[unit_costs[0]], df_list[unit_costs[1]], df_list[unit_costs[2]],
+            df_list[unit_costs[3]], df_list[unit_costs[4]])]
+        df_list['production_transport_energy_unit_cost_usd_per_tonne'] = df_list['production_transport_energy_unit_cost_usd_per_tonne'].fillna(0)
+
+        # Total cost calculations - including energy components
+        costs = [
+                    "export_transport_cost_usd",
+                    "import_transport_cost_usd",
+                    "production_cost_usd",
+                    "energy_opex",
+                    "energy_investment_usd"
                 ]
-    
-    # Calculate total unit cost - now including energy components
-    df_list['production_transport_energy_unit_cost_usd_per_tonne'] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[unit_costs[0]],df_list[unit_costs[1]],
-                                                                                                         df_list[unit_costs[2]], df_list[unit_costs[3]],
-                                                                                                         df_list[unit_costs[4]])]
-    df_list['production_transport_energy_unit_cost_usd_per_tonne'] = df_list['production_transport_energy_unit_cost_usd_per_tonne'].fillna(0)
 
-    # Total cost calculations - now including energy components
-    costs = [
-                "export_transport_cost_usd",
-                "import_transport_cost_usd",
-                "production_cost_usd",
-                "energy_opex",
-                "energy_investment_usd"
-            ]
+        # Compute total cost - including energy components
+        df_list["all_cost_usd"] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(
+            df_list[costs[0]], df_list[costs[1]], df_list[costs[2]],
+            df_list[costs[3]], df_list[costs[4]])]
+    else:
+        print("⚠ Energy data NOT available - using transport + production costs only")
+        # Unit cost calculations - WITHOUT energy components
+        unit_costs = [
+                        "export_transport_cost_usd_per_tonne",
+                        "import_transport_cost_usd_per_tonne",
+                        "production_cost_usd_per_tonne"
+                    ]
 
-    # Compute total cost - now including energy components
-    df_list["all_cost_usd"] = [x+y+z+zz+zy for x,y,z,zz,zy in zip(df_list[costs[0]],df_list[costs[1]],
-                                                                   df_list[costs[2]], df_list[costs[3]],
-                                                                   df_list[costs[4]])]
+        # Calculate total unit cost - WITHOUT energy components
+        df_list['production_transport_energy_unit_cost_usd_per_tonne'] = (
+            df_list[unit_costs[0]] + df_list[unit_costs[1]] + df_list[unit_costs[2]]
+        )
+        df_list['production_transport_energy_unit_cost_usd_per_tonne'] = df_list['production_transport_energy_unit_cost_usd_per_tonne'].fillna(0)
+
+        # Total cost calculations - WITHOUT energy components
+        costs = [
+                    "export_transport_cost_usd",
+                    "import_transport_cost_usd",
+                    "production_cost_usd"
+                ]
+
+        # Compute total cost - WITHOUT energy components
+        df_list["all_cost_usd"] = (
+            df_list[costs[0]] + df_list[costs[1]] + df_list[costs[2]]
+        )
 
     # Fix processing_type classifications if needed
     print("Checking processing_type classifications...")
@@ -99,16 +131,31 @@ def create_all_data_from_combined_transport_file(input_file_path, output_file_pa
 
 def create_unit_costs_file(df_list, output_data_path):
     """
-    Create unit_costs.xlsx file - now including energy components
+    Create unit_costs.xlsx file - handles optional energy components
     """
-    unit_costs = [
-                    "export_transport_cost_usd_per_tonne",
-                    "import_transport_cost_usd_per_tonne", 
-                    "production_cost_usd_per_tonne",
-                    "energy_opex_per_tonne",
-                    "energy_investment_usd_per_tonne"
-                ]
-    
+    # Check if energy data is available
+    has_energy = all(col in df_list.columns for col in ['energy_opex_per_tonne', 'energy_investment_usd_per_tonne'])
+
+    if has_energy:
+        unit_costs = [
+                        "export_transport_cost_usd_per_tonne",
+                        "import_transport_cost_usd_per_tonne",
+                        "production_cost_usd_per_tonne",
+                        "energy_opex_per_tonne",
+                        "energy_investment_usd_per_tonne"
+                    ]
+        agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne",
+                                           "energy_opex_per_tonne", "energy_investment_usd_per_tonne"]}
+        agg_dict["production_cost_usd_per_tonne"] = 'first'
+    else:
+        unit_costs = [
+                        "export_transport_cost_usd_per_tonne",
+                        "import_transport_cost_usd_per_tonne",
+                        "production_cost_usd_per_tonne"
+                    ]
+        agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne"]}
+        agg_dict["production_cost_usd_per_tonne"] = 'first'
+
     uc_list = df_list[["scenario", "reference_mineral", "iso3", 'processing_type',
                          'processing_stage', "constraint"] + unit_costs + ["production_transport_energy_unit_cost_usd_per_tonne"]]
     uc_list = uc_list.drop_duplicates(subset=[ "scenario", "reference_mineral", "iso3", "processing_type",
@@ -118,24 +165,16 @@ def create_unit_costs_file(df_list, output_data_path):
     # Define the grouping columns
     group_cols = ["constraint", "scenario", "reference_mineral", "iso3", "processing_type", "processing_stage"]
 
-    # Define aggregation rules: 
-    # - Use 'first' if a unit cost is expected to be constant within a group
-    # - Use 'sum' for transport costs (since they can vary by country)
-
-    agg_dict = {col: 'sum' for col in ["export_transport_cost_usd_per_tonne","import_transport_cost_usd_per_tonne",
-                                       "energy_opex_per_tonne", "energy_investment_usd_per_tonne"]}  # Transport and energy costs
-    agg_dict["production_cost_usd_per_tonne"] = 'first'  
-
     # Aggregate data
     aggregated_df = uc_list.groupby(group_cols, as_index=False).agg(agg_dict)
 
     # Compute the total unit cost
     aggregated_df["production_transport_energy_unit_cost_usd_per_tonne"] = aggregated_df[unit_costs].sum(axis=1)
 
-    uc_output_file = os.path.join(output_data_path, "unit_costs.xlsx")  
+    uc_output_file = os.path.join(output_data_path, "unit_costs.xlsx")
     aggregated_df.to_excel(uc_output_file, index=False)
     print(f"Created unit costs file: {uc_output_file}")
-    
+
     return aggregated_df
 
 def main():
@@ -152,8 +191,8 @@ def main():
     # Set paths
     output_data_path = config['paths']['results']
     
-    # Input file - using the new energy_transport_totals_by_stage.xlsx with updated data
-    input_file = os.path.join(output_data_path, "result_summaries", "energy_transport_totals_by_stage.xlsx")
+    # Input file - using the new combined_transport_totals_by_stage_new.xlsx with updated data
+    input_file = os.path.join(output_data_path, "result_summaries", "combined_transport_totals_by_stage_new.xlsx")
     
     # Output file - the new all_data.xlsx 
     output_file = os.path.join(output_data_path, "all_data.xlsx")

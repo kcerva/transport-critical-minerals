@@ -365,38 +365,20 @@ def plot_production_processing_focus_subplots(df, output_dir):
     }
     
     saved_paths = []
-    
-    # Group by constraint only (not scenario) to compare scenarios within each constraint
+
+    # Pre-compute max x-values by constraint level (unconstrained vs constrained) for consistent scaling
+    # This ensures country and region figures with the same constraint level have matching x-axis ranges
+    max_x_by_constraint_level = {'unconstrained': 0, 'constrained': 0}
+
     for constraint, constraint_group in df_filtered.groupby("constraint"):
-        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"  
-        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
-        
-        # Get scenarios present in this constraint group
-        available_scenarios = []
-        scenario_data = {}
-        
-        for scenario_key, scenario_name in scenario_mapping.items():
-            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
-            if not scenario_data_filtered.empty:
-                available_scenarios.append((scenario_key, scenario_name))
-                scenario_data[scenario_key] = scenario_data_filtered
-        
-        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
-            continue
-            
-        # Create subplot figure with one column, multiple rows
-        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
-        if len(available_scenarios) == 1:
-            axes = [axes]
-        
-        figure_title = f"Processing Production Comparison (Grouped) — {constraint_type} {constraint_status}\n(Early Refining & Precursor Products Only)"
-        
-        # First pass: find maximum x-value across all scenarios for consistent scaling  
-        max_x_value = 0
-        for scenario_key, scenario_name in scenario_mapping.items():
-            if scenario_key in [s[0] for s in available_scenarios]:
-                scenario_data_temp = scenario_data[scenario_key]
-                
+        constraint_level = 'unconstrained' if 'unconstrained' in constraint else 'constrained'
+
+        # Calculate max value for this constraint group
+        max_value_for_group = 0
+
+        for scenario_key in scenario_mapping.keys():
+            scenario_data_temp = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_temp.empty:
                 # Calculate combined totals for each country across both processing types
                 combined_totals = {}
                 for processing_type in ["Early refining", "Precursor related product"]:
@@ -406,18 +388,53 @@ def plot_production_processing_focus_subplots(df, output_dir):
                         temp_grouped["production_million_tonnes"] = temp_grouped["production_tonnes"] / 1e6
                         for _, row in temp_grouped.iterrows():
                             country = row["iso3"]
-                            mineral = row["reference_mineral"]
                             value = row["production_million_tonnes"]
                             if country not in combined_totals:
                                 combined_totals[country] = 0
                             combined_totals[country] += value
-                
+
                 if combined_totals:
-                    max_x_value = max(max_x_value, max(combined_totals.values()))
-        
-        # Add 10% padding to max value for better visualization
-        if max_x_value > 0:
-            max_x_value = max_x_value * 1.1
+                    max_value_for_group = max(max_value_for_group, max(combined_totals.values()))
+
+        # Update the max for this constraint level
+        max_x_by_constraint_level[constraint_level] = max(
+            max_x_by_constraint_level[constraint_level],
+            max_value_for_group
+        )
+
+    # Add 10% padding to both constraint levels
+    for level in max_x_by_constraint_level:
+        if max_x_by_constraint_level[level] > 0:
+            max_x_by_constraint_level[level] *= 1.1
+
+    # Now create figures using the shared max values
+    for constraint, constraint_group in df_filtered.groupby("constraint"):
+        constraint_type = "National Focus" if "country" in constraint else "Regional Integration"
+        constraint_status = "Environmentally Unconstrained" if "unconstrained" in constraint else "Environmentally Constrained"
+        constraint_level = 'unconstrained' if 'unconstrained' in constraint else 'constrained'
+
+        # Get scenarios present in this constraint group
+        available_scenarios = []
+        scenario_data = {}
+
+        for scenario_key, scenario_name in scenario_mapping.items():
+            scenario_data_filtered = constraint_group[constraint_group["scenario"].str.contains(scenario_key)]
+            if not scenario_data_filtered.empty:
+                available_scenarios.append((scenario_key, scenario_name))
+                scenario_data[scenario_key] = scenario_data_filtered
+
+        if len(available_scenarios) < 2:  # Need at least 2 scenarios to compare
+            continue
+
+        # Create subplot figure with one column, multiple rows
+        fig, axes = plt.subplots(len(available_scenarios), 1, figsize=(14, 5.5 * len(available_scenarios)), sharex=False)
+        if len(available_scenarios) == 1:
+            axes = [axes]
+
+        figure_title = f"Processing Production Comparison (Grouped) — {constraint_type} {constraint_status}\n(Early Refining & Precursor Products Only)"
+
+        # Use shared max value for this constraint level (country and region will match)
+        max_x_value = max_x_by_constraint_level[constraint_level]
         
         for i, (scenario_key, scenario_name) in enumerate(available_scenarios):
             ax = axes[i]
@@ -524,9 +541,10 @@ def plot_production_processing_focus_subplots(df, output_dir):
             if i == 0:
                 from matplotlib.patches import Patch
                 legend_handles = []
-                
+
                 # Add legend for each mineral with both processing types
-                for mineral in all_minerals:
+                # Use reference_minerals to show all minerals consistently, not just ones in current data
+                for mineral in reference_minerals:
                     color = reference_mineral_colormap.get(mineral, "#999999")
                     # Add main mineral entry
                     legend_handles.append(Patch(facecolor=color, label=f"{mineral}"))

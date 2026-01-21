@@ -277,6 +277,203 @@ def calculate_revenue_pct_change_by_mineral_global(df, scenario_base, constraint
 
     return result
 
+
+def calculate_revenue_pct_change_by_mineral_constrained_vs_unconstrained(df, scenario_base, policy_type):
+    """
+    Calculate percentage change in revenue by mineral: Constrained vs Unconstrained
+    (aggregated across all countries)
+
+    Args:
+        df: Raw data from all_data.xlsx
+        scenario_base: 'bau_2040', 'early_refining_2040', 'precursor_2040'
+        policy_type: 'country' or 'region'
+
+    Returns:
+        DataFrame with columns: reference_mineral, revenue_pct_change
+    """
+    # Get correct scenario name
+    scenario = get_scenario_name(scenario_base, policy_type)
+
+    constrained_constraint = f"{policy_type}_constrained"
+    unconstrained_constraint = f"{policy_type}_unconstrained"
+
+    print(f"Calculating by-mineral constrained vs unconstrained revenue % change for {scenario_base} ({policy_type}):")
+    print(f"  Constrained: {scenario} + {constrained_constraint}")
+    print(f"  Unconstrained: {scenario} + {unconstrained_constraint}")
+
+    # Filter data - include all processing stages > 0 and exclude Metal content
+    constrained_data = df[
+        (df['scenario'] == scenario) &
+        (df['constraint'] == constrained_constraint) &
+        (df['processing_stage'] > 0) &
+        (df['processing_type'] != 'Metal content')
+    ]
+
+    unconstrained_data = df[
+        (df['scenario'] == scenario) &
+        (df['constraint'] == unconstrained_constraint) &
+        (df['processing_stage'] > 0) &
+        (df['processing_type'] != 'Metal content')
+    ]
+
+    if constrained_data.empty or unconstrained_data.empty:
+        print(f"  WARNING: Empty data for {scenario_base} ({policy_type})")
+        return pd.DataFrame()
+
+    # Aggregate by mineral across ALL countries
+    constrained_by_mineral = constrained_data.groupby('reference_mineral')['revenue_usd'].sum().reset_index()
+    constrained_by_mineral.columns = ['reference_mineral', 'revenue_constrained']
+
+    unconstrained_by_mineral = unconstrained_data.groupby('reference_mineral')['revenue_usd'].sum().reset_index()
+    unconstrained_by_mineral.columns = ['reference_mineral', 'revenue_unconstrained']
+
+    # Merge and calculate percentage change
+    merged = pd.merge(constrained_by_mineral, unconstrained_by_mineral, on='reference_mineral', how='outer').fillna(0)
+    merged['revenue_pct_change'] = merged.apply(
+        lambda row: ((row['revenue_constrained'] - row['revenue_unconstrained']) / row['revenue_unconstrained'] * 100)
+        if row['revenue_unconstrained'] != 0 else 0, axis=1
+    )
+
+    result = merged[['reference_mineral', 'revenue_pct_change']].copy()
+
+    print(f"  Minerals with data: {len(result)}")
+    print(f"  Avg mineral % change: {result['revenue_pct_change'].mean():.1f}%")
+
+    return result
+
+
+def calculate_revenue_pct_change_by_mineral_country_unc_vs_region_cons(df, scenario_base):
+    """
+    Calculate percentage change in revenue by mineral: Region Constrained vs Country Unconstrained
+    (aggregated across all countries)
+
+    Shows trade-off between regional cooperation with environmental limits vs national focus without limits
+
+    Args:
+        df: Raw data from all_data.xlsx
+        scenario_base: 'bau_2040', 'early_refining_2040', 'precursor_2040'
+
+    Returns:
+        DataFrame with columns: reference_mineral, revenue_pct_change
+    """
+    # Get correct scenario names
+    region_scenario = get_scenario_name(scenario_base, 'region')
+    country_scenario = get_scenario_name(scenario_base, 'country')
+
+    region_constrained = f"region_constrained"
+    country_unconstrained = f"country_unconstrained"
+
+    print(f"Calculating by-mineral country unconstrained vs region constrained revenue % change for {scenario_base}:")
+    print(f"  Region Constrained: {region_scenario} + {region_constrained}")
+    print(f"  Country Unconstrained: {country_scenario} + {country_unconstrained}")
+
+    # Filter data - include all processing stages > 0 and exclude Metal content
+    region_cons_data = df[
+        (df['scenario'] == region_scenario) &
+        (df['constraint'] == region_constrained) &
+        (df['processing_stage'] > 0) &
+        (df['processing_type'] != 'Metal content')
+    ]
+
+    country_unc_data = df[
+        (df['scenario'] == country_scenario) &
+        (df['constraint'] == country_unconstrained) &
+        (df['processing_stage'] > 0) &
+        (df['processing_type'] != 'Metal content')
+    ]
+
+    if region_cons_data.empty or country_unc_data.empty:
+        print(f"  WARNING: Empty data for {scenario_base}")
+        return pd.DataFrame()
+
+    # Aggregate by mineral across ALL countries
+    region_cons_by_mineral = region_cons_data.groupby('reference_mineral')['revenue_usd'].sum().reset_index()
+    region_cons_by_mineral.columns = ['reference_mineral', 'revenue_region_cons']
+
+    country_unc_by_mineral = country_unc_data.groupby('reference_mineral')['revenue_usd'].sum().reset_index()
+    country_unc_by_mineral.columns = ['reference_mineral', 'revenue_country_unc']
+
+    # Merge and calculate percentage change
+    merged = pd.merge(region_cons_by_mineral, country_unc_by_mineral, on='reference_mineral', how='outer').fillna(0)
+    merged['revenue_pct_change'] = merged.apply(
+        lambda row: ((row['revenue_region_cons'] - row['revenue_country_unc']) / row['revenue_country_unc'] * 100)
+        if row['revenue_country_unc'] != 0 else 0, axis=1
+    )
+
+    result = merged[['reference_mineral', 'revenue_pct_change']].copy()
+
+    print(f"  Minerals with data: {len(result)}")
+    print(f"  Avg mineral % change: {result['revenue_pct_change'].mean():.1f}%")
+
+    return result
+
+
+def calculate_production_pct_change_by_mineral_country_unc_vs_region_cons(df, scenario_base):
+    """
+    Calculate percentage change in production by mineral: Region Constrained vs Country Unconstrained
+    (aggregated across all countries)
+
+    Shows trade-off between regional cooperation with environmental limits vs national focus without limits
+
+    Args:
+        df: Raw data from all_data.xlsx
+        scenario_base: 'bau_2040', 'early_refining_2040', 'precursor_2040'
+
+    Returns:
+        DataFrame with columns: reference_mineral, production_pct_change
+    """
+    # Get correct scenario names
+    region_scenario = get_scenario_name(scenario_base, 'region')
+    country_scenario = get_scenario_name(scenario_base, 'country')
+
+    region_constrained = f"region_constrained"
+    country_unconstrained = f"country_unconstrained"
+
+    print(f"Calculating by-mineral country unconstrained vs region constrained production % change for {scenario_base}:")
+    print(f"  Region Constrained: {region_scenario} + {region_constrained}")
+    print(f"  Country Unconstrained: {country_scenario} + {country_unconstrained}")
+
+    # Filter data - include all processing stages > 0 and exclude Metal content
+    region_cons_data = df[
+        (df['scenario'] == region_scenario) &
+        (df['constraint'] == region_constrained) &
+        (df['processing_stage'] > 0) &
+        (df['processing_type'] != 'Metal content')
+    ]
+
+    country_unc_data = df[
+        (df['scenario'] == country_scenario) &
+        (df['constraint'] == country_unconstrained) &
+        (df['processing_stage'] > 0) &
+        (df['processing_type'] != 'Metal content')
+    ]
+
+    if region_cons_data.empty or country_unc_data.empty:
+        print(f"  WARNING: Empty data for {scenario_base}")
+        return pd.DataFrame()
+
+    # Aggregate by mineral across ALL countries
+    region_cons_by_mineral = region_cons_data.groupby('reference_mineral')['production_tonnes'].sum().reset_index()
+    region_cons_by_mineral.columns = ['reference_mineral', 'production_region_cons']
+
+    country_unc_by_mineral = country_unc_data.groupby('reference_mineral')['production_tonnes'].sum().reset_index()
+    country_unc_by_mineral.columns = ['reference_mineral', 'production_country_unc']
+
+    # Merge and calculate percentage change
+    merged = pd.merge(region_cons_by_mineral, country_unc_by_mineral, on='reference_mineral', how='outer').fillna(0)
+    merged['production_pct_change'] = merged.apply(
+        lambda row: ((row['production_region_cons'] - row['production_country_unc']) / row['production_country_unc'] * 100)
+        if row['production_country_unc'] != 0 else 0, axis=1
+    )
+
+    result = merged[['reference_mineral', 'production_pct_change']].copy()
+
+    print(f"  Minerals with data: {len(result)}")
+    print(f"  Avg mineral % change: {result['production_pct_change'].mean():.1f}%")
+
+    return result
+
+
 def calculate_value_added_pct_change_by_mineral_global(df, scenario_base, constraint_level):
     """
     Calculate percentage change in value added by mineral (aggregated across all countries)
@@ -1020,6 +1217,207 @@ def generate_by_mineral_global_revenue_regional_vs_national(df, config):
 
         print(f"✅ Saved: {output_file}")
 
+
+def generate_by_mineral_revenue_constrained_vs_unconstrained(df, config):
+    """
+    Generate by-mineral revenue bar charts (global aggregation) for Constrained vs Unconstrained comparison
+    Shows how each mineral's global revenue changes under environmental constraints
+    """
+    print("\n=== Generating By-Mineral Revenue % Change: Constrained vs Unconstrained ===")
+
+    # Use revenue_percentage_changes folder
+    output_dir = os.path.join(config['paths']['figures'], 'automated_plots', 'revenue_percentage_changes')
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Include all scenarios (BAU, Early Refining, Precursor)
+    scenarios = [
+        ('bau_2040', 'BAU 2040'),
+        ('early_refining_2040', 'Early Refining 2040'),
+        ('precursor_2040', 'Precursor Product 2040')
+    ]
+
+    for policy_type in ['country', 'region']:
+        policy_label = 'Country' if policy_type == 'country' else 'Region'
+        print(f"\nProcessing {policy_label} policies...")
+
+        all_data = []
+
+        for scenario_key, scenario_label in scenarios:
+            by_mineral = calculate_revenue_pct_change_by_mineral_constrained_vs_unconstrained(
+                df, scenario_key, policy_type
+            )
+            by_mineral['scenario'] = scenario_label
+            all_data.append(by_mineral)
+
+        # Calculate consistent x-axis range (expect mostly negative values)
+        all_values = []
+        for scenario_data in all_data:
+            if not scenario_data.empty:
+                all_values.extend(scenario_data['revenue_pct_change'].values)
+
+        if all_values:
+            min_val = min(all_values)
+            max_val = max(all_values)
+            data_range = max_val - min_val
+            padding = max(data_range * 0.15, 10)
+            x_min = min_val - padding
+            x_max = max_val + padding
+        else:
+            x_min, x_max = -50, 50
+
+        # Create figure with 3 subplots (horizontal)
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=300)
+
+        for idx, (scenario_key, scenario_label) in enumerate(scenarios):
+            create_by_mineral_global_subplot(axes[idx], all_data[idx], scenario_label, x_min, x_max, metric='revenue')
+
+        # Overall title
+        fig.suptitle(f'Revenue Change by Mineral: Constrained vs Unconstrained - {policy_label} Policies',
+                    fontsize=14, fontweight='bold', y=0.98)
+
+        fig.text(0.5, 0.02, 'Negative values indicate revenue loss due to environmental constraints - aggregated across all countries',
+                ha='center', fontsize=10, style='italic')
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+
+        # Save figure
+        output_file = os.path.join(output_dir,
+                                   f'revenue_pct_change_by_mineral_constrained_vs_unconstrained_{policy_type}.png')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        print(f"✅ Saved: {output_file}")
+
+
+def generate_by_mineral_revenue_country_unc_vs_region_cons(df, config):
+    """
+    Generate by-mineral revenue bar chart for Country Unconstrained vs Region Constrained comparison
+    Shows trade-off between national focus without limits vs regional cooperation with environmental constraints
+    """
+    print("\n=== Generating By-Mineral Revenue % Change: Country Unconstrained vs Region Constrained ===")
+
+    # Use revenue_percentage_changes folder
+    output_dir = os.path.join(config['paths']['figures'], 'automated_plots', 'revenue_percentage_changes')
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Include all scenarios (BAU, Early Refining, Precursor)
+    scenarios = [
+        ('bau_2040', 'BAU 2040'),
+        ('early_refining_2040', 'Early Refining 2040'),
+        ('precursor_2040', 'Precursor Product 2040')
+    ]
+
+    all_data = []
+
+    for scenario_key, scenario_label in scenarios:
+        by_mineral = calculate_revenue_pct_change_by_mineral_country_unc_vs_region_cons(
+            df, scenario_key
+        )
+        by_mineral['scenario'] = scenario_label
+        all_data.append(by_mineral)
+
+    # Calculate consistent x-axis range (may have positive or negative values)
+    all_values = []
+    for scenario_data in all_data:
+        if not scenario_data.empty:
+            all_values.extend(scenario_data['revenue_pct_change'].values)
+
+    if all_values:
+        min_val = min(all_values)
+        max_val = max(all_values)
+        data_range = max_val - min_val
+        padding = max(data_range * 0.15, 10)
+        x_min = min_val - padding
+        x_max = max_val + padding
+    else:
+        x_min, x_max = -50, 50
+
+    # Create figure with 3 subplots (horizontal)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=300)
+
+    for idx, (scenario_key, scenario_label) in enumerate(scenarios):
+        create_by_mineral_global_subplot(axes[idx], all_data[idx], scenario_label, x_min, x_max, metric='revenue')
+
+    # Overall title
+    fig.suptitle(f'Revenue Change by Mineral: Region Constrained vs Country Unconstrained',
+                fontsize=14, fontweight='bold', y=0.98)
+
+    fig.text(0.5, 0.02, 'Trade-off between regional cooperation with environmental limits vs national focus without limits - aggregated across all countries',
+            ha='center', fontsize=10, style='italic')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+
+    # Save figure
+    output_file = os.path.join(output_dir,
+                               f'revenue_pct_change_by_mineral_country_unc_vs_region_cons.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"✅ Saved: {output_file}")
+
+
+def generate_by_mineral_production_country_unc_vs_region_cons(df, output_dir):
+    """
+    Generate by-mineral production bar chart for Country Unconstrained vs Region Constrained comparison
+    Shows trade-off between national focus without limits vs regional cooperation with environmental constraints
+    """
+    print("\n=== Generating By-Mineral Production % Change: Country Unconstrained vs Region Constrained ===")
+
+    # Exclude BAU as regional vs national is identical for production
+    scenarios = [
+        ('early_refining_2040', 'Early Refining 2040'),
+        ('precursor_2040', 'Precursor Product 2040')
+    ]
+
+    all_data = []
+
+    for scenario_key, scenario_label in scenarios:
+        by_mineral = calculate_production_pct_change_by_mineral_country_unc_vs_region_cons(
+            df, scenario_key
+        )
+        by_mineral['scenario'] = scenario_label
+        all_data.append(by_mineral)
+
+    # Calculate consistent x-axis range (may have positive or negative values)
+    all_values = []
+    for scenario_data in all_data:
+        if not scenario_data.empty:
+            all_values.extend(scenario_data['production_pct_change'].values)
+
+    if all_values:
+        min_val = min(all_values)
+        max_val = max(all_values)
+        data_range = max_val - min_val
+        padding = max(data_range * 0.15, 10)
+        x_min = min_val - padding
+        x_max = max_val + padding
+    else:
+        x_min, x_max = -50, 50
+
+    # Create figure with 2 subplots (horizontal)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), dpi=300)
+
+    for idx, (scenario_key, scenario_label) in enumerate(scenarios):
+        create_by_mineral_global_subplot(axes[idx], all_data[idx], scenario_label, x_min, x_max, metric='production')
+
+    # Overall title
+    fig.suptitle(f'Production Change by Mineral: Region Constrained vs Country Unconstrained',
+                fontsize=14, fontweight='bold', y=0.98)
+
+    fig.text(0.5, 0.02, 'Trade-off between regional cooperation with environmental limits vs national focus without limits - aggregated across all countries',
+            ha='center', fontsize=10, style='italic')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+
+    # Save figure
+    output_file = os.path.join(output_dir,
+                               f'production_pct_change_by_mineral_country_unc_vs_region_cons.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"✅ Saved: {output_file}")
+
+
 def generate_by_mineral_global_value_added_regional_vs_national(df, config):
     """
     Generate by-mineral value added bar charts (global aggregation) for Regional vs National comparison
@@ -1134,6 +1532,9 @@ def main():
     generate_by_mineral_global_regional_vs_national(df, output_dir)
     generate_by_mineral_global_revenue_regional_vs_national(df, config)
     generate_by_mineral_global_value_added_regional_vs_national(df, config)
+    generate_by_mineral_revenue_constrained_vs_unconstrained(df, config)
+    generate_by_mineral_revenue_country_unc_vs_region_cons(df, config)
+    generate_by_mineral_production_country_unc_vs_region_cons(df, output_dir)
 
     print("\n" + "=" * 60)
     print("All production percentage change plots completed!")

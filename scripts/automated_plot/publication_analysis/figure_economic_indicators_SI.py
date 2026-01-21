@@ -15,6 +15,9 @@ The figure shows 7 bars representing:
 Error bars show demand uncertainty (Low-Mid-High range)
 Hatching patterns differentiate Constrained (hatched) vs Unconstrained (solid)
 
+IMPORTANT: Uses MARKET PRICE basis for imports (import_cost_at_price_usd)
+This reflects actual cash flows and trade balance.
+
 Data source: tonnage_flows_with_revenues.xlsx
 """
 
@@ -114,18 +117,18 @@ def prepare_net_revenue_data(df_flows):
 
             # Use same data for low/mid/high (no demand uncertainty for baseline)
             for demand in ['low', 'mid', 'high']:
-                # Net Revenue by Mineral: Sum (exports - imports) by mineral
+                # Net Revenue by Mineral: Sum (exports - imports) by mineral - USING MARKET PRICE BASIS
                 exports = df_scenario[df_scenario['trade_type'] == 'Export'].groupby('reference_mineral')['export_revenue_usd'].sum()
-                imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('reference_mineral')['import_cost_usd'].sum()
+                imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('reference_mineral')['import_cost_at_price_usd'].sum()
 
                 for mineral in MINERAL_ORDER:
                     export_rev = exports.get(mineral, 0)
                     import_cost = imports.get(mineral, 0)
                     revenue_by_mineral_data[label][demand][mineral] = export_rev - import_cost
 
-                # Net Revenue by Processing Type
+                # Net Revenue by Processing Type - USING MARKET PRICE BASIS
                 exports_by_type = df_scenario[df_scenario['trade_type'] == 'Export'].groupby('processing_type')['export_revenue_usd'].sum()
-                imports_by_type = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('processing_type')['import_cost_usd'].sum()
+                imports_by_type = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('processing_type')['import_cost_at_price_usd'].sum()
 
                 for ptype in PROCESSING_ORDER:
                     export_rev = exports_by_type.get(ptype, 0)
@@ -151,18 +154,18 @@ def prepare_net_revenue_data(df_flows):
                     print(f"Warning: No data for {label} {demand} demand")
                     continue
 
-                # Net Revenue by Mineral
+                # Net Revenue by Mineral - USING MARKET PRICE BASIS
                 exports = df_scenario[df_scenario['trade_type'] == 'Export'].groupby('reference_mineral')['export_revenue_usd'].sum()
-                imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('reference_mineral')['import_cost_usd'].sum()
+                imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('reference_mineral')['import_cost_at_price_usd'].sum()
 
                 for mineral in MINERAL_ORDER:
                     export_rev = exports.get(mineral, 0)
                     import_cost = imports.get(mineral, 0)
                     revenue_by_mineral_data[label][demand][mineral] = export_rev - import_cost
 
-                # Net Revenue by Processing Type
+                # Net Revenue by Processing Type - USING MARKET PRICE BASIS
                 exports_by_type = df_scenario[df_scenario['trade_type'] == 'Export'].groupby('processing_type')['export_revenue_usd'].sum()
-                imports_by_type = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('processing_type')['import_cost_usd'].sum()
+                imports_by_type = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].groupby('processing_type')['import_cost_at_price_usd'].sum()
 
                 for ptype in PROCESSING_ORDER:
                     export_rev = exports_by_type.get(ptype, 0)
@@ -181,14 +184,28 @@ def create_net_revenue_panels(revenue_by_mineral_data, revenue_by_processing_dat
         revenue_by_processing_data: Dictionary with net revenue by processing type
         output_dir: Output directory for figure
     """
-    # Create figure with 2 rows
-    fig, axes = plt.subplots(2, 1, figsize=(14, 12))
+    # Create figure with 2 rows, extra space on right for legends
+    fig, axes = plt.subplots(2, 1, figsize=(16, 10))
 
     scenario_labels = [label for _, _, _, label in SCENARIO_CONFIG]
-    x_pos = np.arange(len(scenario_labels))
+    n_scenarios = len(scenario_labels)
+
+    # Y positions for horizontal bars (with gaps for visual grouping)
+    y_positions = np.arange(n_scenarios, dtype=float)
+
+    # Add gaps: between baseline and BAU, between BAU and Precursor
+    baseline_gap = 0.5
+    bau_precursor_gap = 0.5
+    y_positions[1:] += baseline_gap  # Gap after baseline
+    y_positions[3:] += bau_precursor_gap  # Gap after BAU
+
+    bar_height = 0.7
 
     # Panel A: Net Export Revenue by Mineral
     ax_a = axes[0]
+
+    # Determine hatching for constrained scenarios
+    hatches = ['//' if 'C' in label and label != 'Baseline' else '' for label in scenario_labels]
 
     # Calculate bar values (mid demand) and error bars (low-high range)
     mineral_bars = {mineral: [] for mineral in MINERAL_ORDER}
@@ -205,41 +222,58 @@ def create_net_revenue_panels(revenue_by_mineral_data, revenue_by_processing_dat
             mineral_errors_low[mineral].append(mid_val - low_val)
             mineral_errors_high[mineral].append(high_val - mid_val)
 
-    # Plot stacked bars
-    bottoms = np.zeros(len(scenario_labels))
+    # Plot stacked horizontal bars
+    lefts = np.zeros(len(scenario_labels))
     for mineral in MINERAL_ORDER:
         values = np.array(mineral_bars[mineral])
         errors_low = np.array(mineral_errors_low[mineral])
         errors_high = np.array(mineral_errors_high[mineral])
 
-        # Apply hatching for constrained scenarios
-        hatch_pattern = ['', '///', '', '///', '', '///', '']
-
-        bars = ax_a.bar(x_pos, values, bottom=bottoms,
-                       label=mineral.capitalize(),
-                       color=reference_mineral_colormap.get(mineral, '#999999'),
-                       edgecolor='black', linewidth=0.5)
+        bars = ax_a.barh(y_positions, values, bar_height,
+                        left=lefts,
+                        label=mineral.capitalize(),
+                        color=reference_mineral_colormap.get(mineral, '#999999'),
+                        edgecolor='black', linewidth=0.5)
 
         # Apply hatching
-        for bar, hatch in zip(bars, hatch_pattern):
+        for bar, hatch in zip(bars, hatches):
             bar.set_hatch(hatch)
 
-        # Add error bars only on top of each stack
-        if mineral == MINERAL_ORDER[-1]:  # Last mineral (top of stack)
-            ax_a.errorbar(x_pos, bottoms + values,
-                         yerr=[errors_low, errors_high],
-                         fmt='none', ecolor='black', capsize=5, capthick=2,
-                         linewidth=2, zorder=10)
+        # Add error bars only on right end of each stack
+        if mineral == MINERAL_ORDER[-1]:  # Last mineral (right end of stack)
+            ax_a.errorbar(lefts + values, y_positions,
+                         xerr=[errors_low, errors_high],
+                         fmt='none', ecolor='black', capsize=3, capthick=1.5,
+                         linewidth=1.5, zorder=10)
 
-        bottoms += values
+        lefts += values
 
     # Format Panel A
-    ax_a.set_ylabel('Net Export Revenue (Billion USD)', fontsize=14, fontweight='bold')
-    ax_a.set_title('A) Net Export Revenue by Mineral', fontsize=16, fontweight='bold', loc='left')
-    ax_a.set_xticks(x_pos)
-    ax_a.set_xticklabels(scenario_labels, fontsize=12)
-    ax_a.grid(axis='y', linestyle='--', alpha=0.3)
-    ax_a.legend(title='Minerals', fontsize=10, title_fontsize=11, loc='upper left', ncol=2)
+    ax_a.set_xlabel('Net Export Revenue (Billion USD)', fontsize=13, fontweight='bold')
+    ax_a.set_title('A. Net Export Revenue by Mineral', fontsize=13, fontweight='bold', pad=15)
+    ax_a.set_yticks(y_positions)
+    ax_a.set_yticklabels(scenario_labels, fontsize=10)
+    ax_a.invert_yaxis()  # Top to bottom
+    ax_a.grid(axis='x', linestyle='--', alpha=0.3)
+    ax_a.set_axisbelow(True)
+
+    # Create legend with mineral colors - place outside plot on right
+    mineral_patches = [mpatches.Patch(color=reference_mineral_colormap[m],
+                                     label=m.capitalize())
+                      for m in MINERAL_ORDER]
+    leg1 = ax_a.legend(handles=mineral_patches,
+                       bbox_to_anchor=(1.02, 1), loc='upper left',
+                       frameon=True, fontsize=9, ncol=1, title='Minerals')
+
+    # Add hatching legend - place below mineral legend
+    hatching_patches = [
+        mpatches.Patch(facecolor='white', edgecolor='black', label='Unconstrained'),
+        mpatches.Patch(facecolor='white', edgecolor='black', hatch='//', label='Constrained')
+    ]
+    leg2 = ax_a.legend(handles=hatching_patches,
+                       bbox_to_anchor=(1.02, 0.55), loc='upper left',
+                       frameon=True, fontsize=9, title='Constraint')
+    ax_a.add_artist(leg1)
 
     # Panel B: Net Export Revenue by Processing Type
     ax_b = axes[1]
@@ -259,61 +293,63 @@ def create_net_revenue_panels(revenue_by_mineral_data, revenue_by_processing_dat
             processing_errors_low[ptype].append(mid_val - low_val)
             processing_errors_high[ptype].append(high_val - mid_val)
 
-    # Plot stacked bars
-    bottoms = np.zeros(len(scenario_labels))
+    # Plot stacked horizontal bars
+    lefts_b = np.zeros(len(scenario_labels))
     for ptype in PROCESSING_ORDER:
         values = np.array(processing_bars[ptype])
         errors_low = np.array(processing_errors_low[ptype])
         errors_high = np.array(processing_errors_high[ptype])
 
-        # Apply hatching for constrained scenarios
-        hatch_pattern = ['', '///', '', '///', '', '///', '']
-
-        bars = ax_b.bar(x_pos, values, bottom=bottoms,
-                       label=ptype,
-                       color=PROCESSING_TYPE_COLORS.get(ptype, '#999999'),
-                       edgecolor='black', linewidth=0.5)
+        bars = ax_b.barh(y_positions, values, bar_height,
+                        left=lefts_b,
+                        label=ptype,
+                        color=PROCESSING_TYPE_COLORS.get(ptype, '#999999'),
+                        edgecolor='black', linewidth=0.5)
 
         # Apply hatching
-        for bar, hatch in zip(bars, hatch_pattern):
+        for bar, hatch in zip(bars, hatches):
             bar.set_hatch(hatch)
 
-        # Add error bars only on top of each stack
-        if ptype == PROCESSING_ORDER[-1]:  # Last processing type (top of stack)
-            ax_b.errorbar(x_pos, bottoms + values,
-                         yerr=[errors_low, errors_high],
-                         fmt='none', ecolor='black', capsize=5, capthick=2,
-                         linewidth=2, zorder=10)
+        # Add error bars only on right end of each stack
+        if ptype == PROCESSING_ORDER[-1]:  # Last processing type (right end of stack)
+            ax_b.errorbar(lefts_b + values, y_positions,
+                         xerr=[errors_low, errors_high],
+                         fmt='none', ecolor='black', capsize=3, capthick=1.5,
+                         linewidth=1.5, zorder=10)
 
-        bottoms += values
+        lefts_b += values
 
     # Format Panel B
-    ax_b.set_ylabel('Net Export Revenue (Billion USD)', fontsize=14, fontweight='bold')
-    ax_b.set_title('B) Net Export Revenue by Processing Type', fontsize=16, fontweight='bold', loc='left')
-    ax_b.set_xticks(x_pos)
-    ax_b.set_xticklabels(scenario_labels, fontsize=12)
-    ax_b.grid(axis='y', linestyle='--', alpha=0.3)
-    ax_b.legend(title='Processing Types', fontsize=10, title_fontsize=11, loc='upper left')
+    ax_b.set_xlabel('Net Export Revenue (Billion USD)', fontsize=13, fontweight='bold')
+    ax_b.set_title('B. Net Export Revenue by Processing Type', fontsize=13, fontweight='bold', pad=15)
+    ax_b.set_yticks(y_positions)
+    ax_b.set_yticklabels(scenario_labels, fontsize=10)
+    ax_b.invert_yaxis()  # Top to bottom
+    ax_b.grid(axis='x', linestyle='--', alpha=0.3)
+    ax_b.set_axisbelow(True)
 
-    # Overall title
-    fig.suptitle('Net Export Revenue: Baseline, BAU vs Precursor\n(Mid-demand with Low-High range)',
-                 fontsize=18, fontweight='bold', y=0.995)
+    # Create legend with processing type colors - place outside plot on right
+    ptype_patches = [mpatches.Patch(color=PROCESSING_TYPE_COLORS[p],
+                                    label=p)
+                    for p in PROCESSING_ORDER]
+    leg3 = ax_b.legend(handles=ptype_patches,
+                       bbox_to_anchor=(1.02, 1), loc='upper left',
+                       frameon=True, fontsize=9, ncol=1, title='Processing Types')
 
-    # Add note about BAU scenarios
-    fig.text(0.5, 0.01, 'Note: BAU scenarios have no National/Regional distinction (identical outcomes)',
-             ha='center', fontsize=9, style='italic')
-
-    # Adjust layout
-    plt.tight_layout(rect=[0, 0.03, 1, 0.98])
+    # Adjust layout to leave space for legends on the right
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     # Save figure
     output_path = os.path.join(output_dir, 'economic_indicators_net_revenue_SI.png')
     output_path_pdf = os.path.join(output_dir, 'economic_indicators_net_revenue_SI.pdf')
     output_path_preview = os.path.join(output_dir, 'economic_indicators_net_revenue_SI_preview.png')
 
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.savefig(output_path_pdf, dpi=300, bbox_inches='tight')
-    plt.savefig(output_path_preview, dpi=150, bbox_inches='tight')
+    # Get all legend artists for bbox_extra_artists
+    all_legends = [leg1, leg2, leg3]
+
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', bbox_extra_artists=all_legends)
+    plt.savefig(output_path_pdf, bbox_inches='tight', bbox_extra_artists=all_legends)
+    plt.savefig(output_path_preview, dpi=150, bbox_inches='tight', bbox_extra_artists=all_legends)
     plt.close()
 
     print(f"  ✓ Saved: {output_path}")

@@ -40,6 +40,7 @@ from plot_revenue_all_countries import (
     plot_revenue_single_axis_clean,
     plot_revenue_single_axis_comparison
 )
+from plot_net_revenue_single_axis import generate_regional_net_revenue_charts
 from plot_country_differences import generate_country_difference_plots
 from plot_all_countries_comparison import generate_all_country_comparison_plots
 from plot_goal_comparisons import plot_goal_comparisons_2040, plot_production_goal_comparison_by_processing_type
@@ -47,6 +48,7 @@ from plot_supply_curves import create_supply_curves, create_supply_curve_scenari
 from plot_production_differences import generate_essential_difference_plots
 from plot_revenue_differences import generate_essential_revenue_difference_plots
 from plot_competitiveness_summary import create_competitiveness_heatmaps
+from publication_analysis.plot_publication_all import generate_all_publication_figures
 
 def run_plot_production(df, output_dir, config):
     # Updated for new scenario structure - goals are determined by scenario name, not year
@@ -319,6 +321,22 @@ def run_competitiveness_summary(df, output_dir, config):
     saved_paths = create_competitiveness_heatmaps(df, output_dir)
     print(f"Competitiveness heatmaps completed. Generated {len(saved_paths)} figures.")
 
+def run_publication_figures(df, output_dir, config):
+    """Generate all publication-ready figures"""
+    print("Generating publication figures...")
+    saved_paths = generate_all_publication_figures(df, output_dir)
+    total_figs = sum(len(paths) for paths in saved_paths.values())
+    print(f"Publication figures completed. Generated {total_figs} figures total.")
+
+def run_net_revenue_single_axis(df, output_dir, config):
+    """Generate regional net export revenue single-axis charts"""
+    single_axis_dir = os.path.join(output_dir, "single_axis")
+    os.makedirs(single_axis_dir, exist_ok=True)
+
+    print("Generating regional net export revenue single-axis charts...")
+    chart_paths = generate_regional_net_revenue_charts(single_axis_dir)
+    print(f"Net export revenue charts completed. Generated {len(chart_paths)} figures.")
+
 AVAILABLE_PLOTS = {
     "revenue_gdp_share": run_plot_revenue,
     "value_addition_gdp_share": run_plot_value_addition,
@@ -334,7 +352,9 @@ AVAILABLE_PLOTS = {
     "production_differences": run_production_differences,
     "revenue_differences": run_revenue_differences,
     "single_axis_all": run_single_axis_all,
-    "competitiveness_summary": run_competitiveness_summary
+    "net_revenue_single_axis": run_net_revenue_single_axis,
+    "competitiveness_summary": run_competitiveness_summary,
+    "publication_figures": run_publication_figures
 }
 
 PLOT_GROUPS = {
@@ -342,14 +362,16 @@ PLOT_GROUPS = {
         "production_all_countries", "emissions_all_countries", "water_all_countries",
         "revenue_gdp_share", "value_addition_gdp_share", "all_country_comparisons",
         "goal_comparisons_all_countries", "supply_curves", "production_differences", "revenue_differences",
-        "single_axis_all", "competitiveness_summary"
+        "single_axis_all", "net_revenue_single_axis", "competitiveness_summary"
     ],
     "single_countries": ["single_country_all", "country_differences"],
     "core": ["production_all_countries", "emissions_all_countries", "goal_comparisons_all_countries"],
     "reports": ["country_docx_reports"],
     "goal_analysis": ["goal_comparisons_all_countries"],
     "supply_analysis": ["supply_curves", "competitiveness_summary"],
-    "difference_analysis": ["production_differences", "revenue_differences"]
+    "difference_analysis": ["production_differences", "revenue_differences", "net_revenue_single_axis"],
+    "publication": ["publication_figures"],
+    "paper": ["publication_figures"]  # Alias for convenience
 }
 
 def run_selected_plots(selected=None, group=None):

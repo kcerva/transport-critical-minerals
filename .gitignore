@@ -35,9 +35,10 @@ CLAUDE_MD_ADDITIONS.md
 *_SUMMARY.md
 *_PLAN.md
 *_CORRECTED.md
+*_VALIDATION.md
+*_DETAILED.md
 debug_*.py
-scripts/automated_plot/check_*.py
-scripts/automated_plot/debug_*.py
-scripts/automated_plot/verify_*.py
+scripts/automated_plot/verify_plot_data.py
+scripts/automated_plot/temp_analysis/
 scripts/automated_plot/plot_emissions_water_simple.py
 scripts/automated_plot/plot_revenue_simple.py

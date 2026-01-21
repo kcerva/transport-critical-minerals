@@ -180,5 +180,34 @@ try:
 except Exception as e:
     print(f"✗ Error generating value addition simple GDP share scenario comparison subplots: {e}")
 
+# Generate Net Export Revenue GDP Share figures
+print("\n=== Generating Net Export Revenue Share of GDP Figures ===")
+try:
+    from plot_gdp_share_by_country_all_constraints import compute_net_export_revenue_gdp_share
+
+    # Compute net export revenue share data
+    net_export_revenue_share_df = compute_net_export_revenue_gdp_share(df)
+
+    # Generate the plots with proper parameters
+    net_export_revenue_files = plot_gdp_share_by_country_all_constraints(
+        net_export_revenue_share_df,
+        output_base,
+        value_column='value',
+        title_prefix='Net Export Revenue Share of GDP',
+        ylabel='Net Export Revenue Share of GDP (%)'
+    )
+    print(f"✓ Generated {len(net_export_revenue_files) if net_export_revenue_files else 0} net export revenue share of GDP figures")
+
+    # Generate scenario comparison subplots
+    net_export_revenue_subplot_files = plot_gdp_share_scenario_comparison_subplots(
+        df, output_base, compute_net_export_revenue_gdp_share, 'value', 'Net Export Revenue Share of GDP', 'Net Export Revenue Share of GDP (%)'
+    )
+    print(f"✓ Generated {len(net_export_revenue_subplot_files) if net_export_revenue_subplot_files else 0} net export revenue share scenario comparison subplots")
+
+except Exception as e:
+    print(f"✗ Error generating net export revenue share figures: {e}")
+    import traceback
+    traceback.print_exc()
+
 print("\n✅ Figure generation complete!")
 print(f"Output directory: {output_base}")

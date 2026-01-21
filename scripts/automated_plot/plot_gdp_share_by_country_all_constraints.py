@@ -328,7 +328,7 @@ def compute_revenue_share(df):
 def compute_value_addition_simple_share(df):
     # Import simple value addition calculation function
     from plot_emissions_water_all_countries import calc_value_added_simple
-    
+
     df = adjust_gdp_for_inflation(df.copy())
     df = df[df["processing_stage"] > 0]
     df = df[df["gdp_usd"] > 0]  # Filter out zero GDP values
@@ -339,9 +339,97 @@ def compute_value_addition_simple_share(df):
     df = df.groupby(["scenario", "constraint", "iso3", "reference_mineral"]).apply(
         calc_value_added_simple
     ).reset_index(drop=True)
-    
+
     df["value"] = df["value_added_simple"] / df["gdp_usd"] * 100
     df["variable"] = "value_addition_simple"
     df.rename(columns={"iso3": "country"}, inplace=True)
     # Keep all essential columns for plotting
     return df[["country", "year", "reference_mineral", "scenario", "constraint", "variable", "value"]]
+
+def compute_net_export_revenue_gdp_share(df):
+    """
+    Compute net export revenue as percentage of GDP
+
+    Args:
+        df: all_data.xlsx DataFrame with GDP information
+
+    Returns:
+        DataFrame with net_export_revenue as % of GDP for plotting
+    """
+    import json
+    from pathlib import Path
+
+    # Load config to get paths
+    config_path = Path(__file__).parent.parent.parent / 'config.json'
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    results_path = Path(config['paths']['results'])
+    flows_path = results_path / 'tonnage_flows_with_revenues.xlsx'
+
+    # Load tonnage flows data
+    df_flows = pd.read_excel(flows_path, sheet_name='All_Flows')
+
+    # Calculate net export revenue by country/mineral/scenario/constraint
+    # Exports
+    exports = df_flows[df_flows['trade_type'] == 'Export'].groupby(
+        ['iso3', 'reference_mineral', 'scenario', 'constraint']
+    )['export_revenue_usd'].sum().reset_index()
+    exports.rename(columns={'export_revenue_usd': 'export_revenue'}, inplace=True)
+
+    # Imports
+    imports = df_flows[df_flows['trade_type'].str.contains('Import', na=False)].groupby(
+        ['iso3', 'reference_mineral', 'scenario', 'constraint']
+    )['import_cost_at_price_usd'].sum().reset_index()
+    imports.rename(columns={'import_cost_at_price_usd': 'import_cost'}, inplace=True)
+
+    # Merge and calculate net export revenue
+    net_revenue_df = exports.merge(
+        imports,
+        on=['iso3', 'reference_mineral', 'scenario', 'constraint'],
+        how='outer'
+    )
+    net_revenue_df['export_revenue'] = net_revenue_df['export_revenue'].fillna(0)
+    net_revenue_df['import_cost'] = net_revenue_df['import_cost'].fillna(0)
+    net_revenue_df['net_export_revenue_usd'] = (
+        net_revenue_df['export_revenue'] - net_revenue_df['import_cost']
+    )
+
+    # Extract year from scenario
+    def extract_year(scenario):
+        if '2022' in scenario:
+            return 2022
+        elif '2030' in scenario:
+            return 2030
+        elif '2040' in scenario:
+            return 2040
+        else:
+            return 2040
+
+    net_revenue_df['year'] = net_revenue_df['scenario'].apply(extract_year)
+
+    # Get GDP data from df
+    df_gdp = adjust_gdp_for_inflation(df.copy())
+    df_gdp = df_gdp[['iso3', 'scenario', 'year', 'gdp_usd']].drop_duplicates()
+    df_gdp = df_gdp[df_gdp['gdp_usd'] > 0]
+
+    # Merge net export revenue with GDP
+    merged_df = net_revenue_df.merge(
+        df_gdp,
+        left_on=['iso3', 'scenario', 'year'],
+        right_on=['iso3', 'scenario', 'year'],
+        how='left'
+    )
+
+    # Filter out rows without GDP data
+    merged_df = merged_df[merged_df['gdp_usd'] > 0].copy()
+
+    # Calculate percentage of GDP
+    merged_df['value'] = merged_df['net_export_revenue_usd'] / merged_df['gdp_usd'] * 100
+    merged_df['variable'] = 'net_export_revenue'
+
+    # Rename for plotting compatibility
+    merged_df.rename(columns={'iso3': 'country'}, inplace=True)
+
+    # Keep all essential columns for plotting
+    return merged_df[["country", "year", "reference_mineral", "scenario", "constraint", "variable", "value"]]
