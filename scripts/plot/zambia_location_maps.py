@@ -64,60 +64,36 @@ def main():
                                 "stage_type":["Metal content"],
                                 "scenarios":["country_unconstrained","country_constrained"],
                                 "scenario_names":["country","country"],
-                                "years":[2030,2030],
+                                "years":[2040,2040],
                                 "layers":[
-                                            "2030_mid_min_threshold_metal_tons",
-                                            "2030_mid_min_threshold_metal_tons"],
-                                "layers_names":["2030 - No Environmental constraints",
-                                                "2030 - Environmental constraints"]
+                                            "bau_2040_mid_min_threshold_metal_tons",
+                                            "bau_2040_mid_min_threshold_metal_tons"],
+                                "layers_names":["2040 - No Environmental constraints",
+                                                "2040 - Environmental constraints"]
                             },
                             {
-                                "type":"initial_stage_production_tons",
-                                "stage_type":["Metal content"],
+                                "type":"final_stage_production_tons",
+                                "stage_type":["BAU"],
                                 "scenarios":["country_unconstrained","country_constrained"],
                                 "scenario_names":["country","country"],
                                 "years":[2040,2040],
                                 "layers":[
-                                            "2040_mid_min_threshold_metal_tons",
-                                            "2040_mid_min_threshold_metal_tons"],
-                                "layers_names":["2040 - No Environmental constraints",
-                                                "2040 - Environmental constraints"]
+                                            "bau_2040_mid_min_threshold_metal_tons",
+                                            "bau_2040_mid_min_threshold_metal_tons"],
+                                "layers_names":["BAU - No Environmental constraints",
+                                                "BAU - Environmental constraints"]
                             },
                             {
                                 "type":"final_stage_production_tons",
                                 "stage_type":["Early refining"],
                                 "scenarios":["country_unconstrained","country_constrained"],
                                 "scenario_names":["country","country"],
-                                "years":[2030,2030],
-                                "layers":[
-                                            "2030_mid_min_threshold_metal_tons",
-                                            "2030_mid_min_threshold_metal_tons"],
-                                "layers_names":["2030 - No Environmental constraints",
-                                                "2030 - Environmental constraints"]
-                            },
-                            {
-                                "type":"final_stage_production_tons",
-                                "stage_type":["Precursor related product"],
-                                "scenarios":["country_unconstrained","country_constrained"],
-                                "scenario_names":["country","country"],
                                 "years":[2040,2040],
                                 "layers":[
-                                            "2040_mid_min_threshold_metal_tons",
-                                            "2040_mid_min_threshold_metal_tons"],
-                                "layers_names":["2040 - No Environmental constraints",
-                                                "2040 - Environmental constraints"]
-                            },
-                            {
-                                "type":"final_stage_production_tons",
-                                "stage_type":["Early refining"],
-                                "scenarios":["region_unconstrained","region_constrained"],
-                                "scenario_names":["region","region"],
-                                "years":[2030,2030],
-                                "layers":[
-                                            "2030_mid_max_threshold_metal_tons",
-                                            "2030_mid_max_threshold_metal_tons"],
-                                "layers_names":["2030 - No Environmental constraints",
-                                                "2030 - Environmental constraints"]
+                                            "early_refining_2040_mid_min_threshold_metal_tons",
+                                            "early_refining_2040_mid_min_threshold_metal_tons"],
+                                "layers_names":["Early Refining - No Environmental constraints",
+                                                "Early Refining - Environmental constraints"]
                             },
                             {
                                 "type":"final_stage_production_tons",
@@ -126,10 +102,10 @@ def main():
                                 "scenario_names":["region","region"],
                                 "years":[2040,2040],
                                 "layers":[
-                                            "2040_mid_max_threshold_metal_tons",
-                                            "2040_mid_max_threshold_metal_tons"],
-                                "layers_names":["2040 - No Environmental constraints",
-                                                "2040 - Environmental constraints"]
+                                            "precursor_2040_mid_max_threshold_metal_tons",
+                                            "precursor_2040_mid_max_threshold_metal_tons"],
+                                "layers_names":["Precursor - No Environmental constraints",
+                                                "Precursor - Environmental constraints"]
                             },
                         ]
     # result_type = ["noncombined","combined"]
@@ -196,7 +172,7 @@ def main():
         
             tmax = max(tmax)
             print (tmax)
-            tmax = 3250000.0
+            tmax = 2430000.0
             tonnage_key = 10**np.arange(1,np.ceil(np.log10(tmax)),1)
             sc_dfs.append(tuple(key_info))
             if len(scenarios) == 1:
@@ -269,7 +245,7 @@ def main():
                         alpha=0.7)
                     ax.text(
                         xl[0]+0.7*dxl,yl[0]+0.05*dyl,
-                        'Total = {:.2f} million tonnes'.format(df["total_tons"].sum()/1e6),
+                        'Total = {:,.0f} kilotonnes'.format(df["total_tons"].sum()/1e3),
                         fontsize=textfontsize,weight='bold',ha='center')  
             fig_nm = '_'.join(list(set(layers))).replace("_min_threshold_metal_tons","").replace("_max_threshold_metal_tons","")
             if ton_type == "initial_stage_production_tons":

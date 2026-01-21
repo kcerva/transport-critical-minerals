@@ -28,7 +28,7 @@ def get_plotting_layers(
         sc_dataframe,
         e_range,
         make_plot,
-        y,p,e,cnt,con,
+        scn,y,p,e,cnt,con,
         flow_data_folder,
         flow_column,
         ccg_isos,
@@ -40,11 +40,16 @@ def get_plotting_layers(
         ):
     ds = str(distance_from_origin).replace('.','p')
     eb = str(environmental_buffer).replace('.','p')
-    title_name = f"{y} - {p.title()}"
+    scn_rename = scn.replace(" ","_")
+    if scn == "bau":
+        scn_title = "BAU"
+    else:
+        scn_title = scn.title()
+    title_name = f"{scn_title} - {p.title()}"
     if y == 2022:
         layer_name = f"{p}"
     else:
-        layer_name = f"{p}_{e}"
+        layer_name = f"{p}_{e}_{scn_rename}"
         if con == "unconstrained":
             title_name = f"{title_name} - No Environmental constraints"
         else:
@@ -100,6 +105,7 @@ def main(
         config,
         country_codes,
         offsets,
+        scenarios,
         years,
         percentiles,
         efficient_scales,
@@ -151,7 +157,7 @@ def main(
     key_info = ["key",pd.DataFrame(),0,1]
     
     fig_scenario = [
-                    years,
+                    scenarios,
                     percentiles,
                     country_cases
                 ]
@@ -170,34 +176,35 @@ def main(
         else:
             figure_result_file = f"{combination}_{figure_result_file}_scenarios.png"
 
-    combinations = list(zip(years,percentiles,efficient_scales,country_cases,constraints))
+    combinations = list(zip(scenarios,years,percentiles,efficient_scales,country_cases,constraints))
     sc_dfs = []
     edges_range = []
-    for y in [2022,2030,2040]:
-        for e in ["min_threshold_metal_tons","max_threshold_metal_tons"]:
-            for cnt in ["country","region"]:
-                for con in ["unconstrained","constrained"]:
-                    edges_range, _ , _ = get_plotting_layers(
-                                                sc_dfs,
-                                                edges_range,
-                                                make_plot,
-                                                y,"mid",e,cnt,con,
-                                                flow_data_folder,
-                                                flow_column,
-                                                ccg_isos,
-                                                combination=combination,
-                                                distance_from_origin=distance_from_origin,
-                                                environmental_buffer=environmental_buffer)
+    for scn in ["baseline","bau","early refining","precursor"]:
+        for y in [2022,2040]:
+            for e in ["min_threshold_metal_tons","max_threshold_metal_tons"]:
+                for cnt in ["country","region"]:
+                    for con in ["unconstrained","constrained"]:
+                        edges_range, _ , _ = get_plotting_layers(
+                                                    sc_dfs,
+                                                    edges_range,
+                                                    make_plot,
+                                                    scn,y,"mid",e,cnt,con,
+                                                    flow_data_folder,
+                                                    flow_column,
+                                                    ccg_isos,
+                                                    combination=combination,
+                                                    distance_from_origin=distance_from_origin,
+                                                    environmental_buffer=environmental_buffer)
 
     sc_dfs = []
     er = []
     make_plot = False
-    for idx, (y,p,e,cnt,con) in enumerate(combinations):
+    for idx, (scn,y,p,e,cnt,con) in enumerate(combinations):
         _, sc_dfs , make_plot = get_plotting_layers(
                                                 sc_dfs,
                                                 er,
                                                 make_plot,
-                                                y,p,e,cnt,con,
+                                                scn,y,p,e,cnt,con,
                                                 flow_data_folder,
                                                 flow_column,
                                                 ccg_isos,
@@ -218,12 +225,12 @@ def main(
         if sc_l == 1:
             figwidth = 8
             figheight = figwidth/(2+sc_l*w)/dxl*dyl/(1-dt)
-            textfontsize = 10
+            textfontsize = 9
             legendfontsize = 10
         else:
             figwidth = 16
             figheight = figwidth/(2.5+sc_l*w)/dxl*dyl/(1-dt)
-            textfontsize = 12
+            textfontsize = 10
             legendfontsize = 12
         fig = plt.figure(figsize=(figwidth,figheight))
         plt.subplots_adjust(left=0, bottom=0, right=1, top=1-dt,wspace=w)
@@ -292,21 +299,23 @@ def main(
 if __name__ == '__main__':
     CONFIG = load_config()
     try:
-        if len(sys.argv) > 6:
-            years = ast.literal_eval(str(sys.argv[1]))
-            percentiles = ast.literal_eval(str(sys.argv[2]))
-            efficient_scales = ast.literal_eval(str(sys.argv[3]))
-            country_cases = ast.literal_eval(str(sys.argv[4]))
-            constraints = ast.literal_eval(str(sys.argv[5]))
-            combination = str(sys.argv[6])
-            distance_from_origin = float(sys.argv[7])
-            environmental_buffer = float(sys.argv[8])
+        if len(sys.argv) > 7:
+            scenarios = ast.literal_eval(str(sys.argv[1]))
+            years = ast.literal_eval(str(sys.argv[2]))
+            percentiles = ast.literal_eval(str(sys.argv[3]))
+            efficient_scales = ast.literal_eval(str(sys.argv[4]))
+            country_cases = ast.literal_eval(str(sys.argv[5]))
+            constraints = ast.literal_eval(str(sys.argv[6]))
+            combination = str(sys.argv[7])
+            distance_from_origin = float(sys.argv[8])
+            environmental_buffer = float(sys.argv[9])
         else:
-            years = ast.literal_eval(str(sys.argv[1]))
-            percentiles = ast.literal_eval(str(sys.argv[2]))
-            efficient_scales = ast.literal_eval(str(sys.argv[3]))
-            country_cases = ast.literal_eval(str(sys.argv[4]))
-            constraints = ast.literal_eval(str(sys.argv[5]))
+            scenarios = ast.literal_eval(str(sys.argv[1]))
+            years = ast.literal_eval(str(sys.argv[2]))
+            percentiles = ast.literal_eval(str(sys.argv[3]))
+            efficient_scales = ast.literal_eval(str(sys.argv[4]))
+            country_cases = ast.literal_eval(str(sys.argv[5]))
+            constraints = ast.literal_eval(str(sys.argv[6]))
             combination = None
             distance_from_origin = 0.0
             environmental_buffer = 0.0
@@ -314,7 +323,8 @@ if __name__ == '__main__':
         print("Got arguments", sys.argv)
         exit()
 
-    ccg_countries = ["AGO","BDI","BWA","COD","KEN","MDG","MOZ","MWI","NAM","TZA","UGA","ZAF","ZMB","ZWE"]
+    # ccg_countries = ["AGO","BDI","BWA","COD","KEN","MDG","MOZ","MWI","NAM","TZA","UGA","ZAF","ZMB","ZWE"]
+    ccg_countries = ["ZMB"]
     default_offset = [-0.2,-0.2,1.0,1.0]
     zaf_offset = [0.0,10.0,0.0,0.0]
     for ccg in ccg_countries:
@@ -334,6 +344,7 @@ if __name__ == '__main__':
                 CONFIG,
                 country_codes,
                 offsets,
+                scenarios,
                 years,
                 percentiles,
                 efficient_scales,

@@ -6,7 +6,6 @@ from collections import OrderedDict
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 import geopandas as gpd
-import ast
 import numpy as np
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
@@ -22,22 +21,17 @@ processed_data_path = config['paths']['data']
 output_path = config['paths']['results']
 figure_path = config['paths']['figures']
 
-def main(country_codes,offsets,x_text,include_labels=True):
-    figures = os.path.join(figure_path,f"{'_'.join(country_codes)}_figures")
+def main():
+    figures = os.path.join(figure_path,"regional_figures")
     os.makedirs(figures,exist_ok=True)
-
-    figures = os.path.join(figure_path,f"{'_'.join(country_codes)}_figures","mine_and_processing_locations")
+    
+    figures = os.path.join(figure_path,"regional_figures","mine_and_processing_locations")
     os.makedirs(figures,exist_ok=True)
+    
+    ccg_countries = pd.read_csv(os.path.join(processed_data_path,"admin_boundaries","ccg_country_codes.csv"))
+    ccg_isos = ccg_countries[ccg_countries["ccg_country"] == 1]["iso_3digit_alpha"].values.tolist()
 
-    xmin_offset = offsets[0]
-    ymin_offset = offsets[1]
-    xmax_offset = offsets[2]
-    ymax_offset = offsets[3]
-    _,_,xl,yl = map_background_and_bounds(include_countries=country_codes,
-                                            xmin_offset = xmin_offset,
-                                            xmax_offset = xmax_offset,
-                                            ymin_offset = ymin_offset,
-                                            ymax_offset = ymax_offset)
+    _,_,xl,yl = map_background_and_bounds(include_countries=ccg_isos)
     dxl = abs(np.diff(xl))[0]
     dyl = abs(np.diff(yl))[0]
     w = 0.03
@@ -46,7 +40,7 @@ def main(country_codes,offsets,x_text,include_labels=True):
     marker_size_max = 600
     key_info = ["key",pd.DataFrame(),0,1]
     reference_minerals = ["cobalt", "copper", "graphite", "lithium", "manganese", "nickel"]
-    reference_mineral_colors = ["#3288bd", "#fee08b", "#66c2a5", "#c2a5cf", "#fdae61", "#f46d43"]
+    reference_mineral_colors = ["#3288bd", "#fee08b", "#66c2a5", "#c2a5cf", "#fdae61", "#f46d43"]  
     plot_descriptions = [
                             {
                                 "type":"initial_stage_production_tons",
@@ -130,15 +124,17 @@ def main(country_codes,offsets,x_text,include_labels=True):
                                                 "Precursor - Environmental constraints"]
                             },
                         ]
+    # result_type = ["noncombined","combined"]
     result_type = ["combined"]
-    stage_mapping_df = pd.read_excel(
-                                os.path.join(
-                                    processed_data_path,
-                                    "mineral_usage_factors",
-                                    "stage_mapping.xlsx"),
-                                sheet_name='stage_maps')
-    tmax = 2000000
+    # stage_mapping_df = pd.read_excel(
+    #                             os.path.join(
+    #                                 processed_data_path,
+    #                                 "mineral_usage_factors",
+    #                                 "stage_mapping.xlsx"),
+    #                             sheet_name='stage_maps')
     for rt in result_type:
+        # if rt == "combined":
+        #     plot_descriptions = [p for p in plot_descriptions if p["type"] == "final_stage_production_tons"]
         for plot in plot_descriptions:
             ton_type = plot["type"]
             st_type = plot["stage_type"]
@@ -149,6 +145,7 @@ def main(country_codes,offsets,x_text,include_labels=True):
             layers_names = plot["layers_names"]
             combos = enumerate(zip(years,scenarios,scenario_names,layers,layers_names))
             sc_dfs = []
+            tmax = []
             for idx, (y, sc, sc_nm, lyr, lyr_nm) in combos:
                 if rt == "combined":
                     fname = f"{rt}_node_locations_for_energy_conversion_{sc}.gpkg"
@@ -160,13 +157,18 @@ def main(country_codes,offsets,x_text,include_labels=True):
                                             "optimised_processing_locations",
                                             fname),
                                         layer=lyr)
-                mine_sites_df = mine_sites_df[mine_sites_df["iso3"].isin(country_codes)]
                 mine_city_stages = modify_mineral_usage_factors(sc,future_year=y)
                 dfs = []
                 for kdx,(rf,rc) in enumerate(zip(reference_minerals,reference_mineral_colors)):
                     if ton_type == "initial_stage_production_tons":
                         cols = [f"{rf}_{ton_type}_0.0_in_{sc_nm}"]
                     else:
+                        # stages = stage_mapping_df[
+                        #                 (
+                        #                     stage_mapping_df["reference_mineral"] == rf
+                        #                 ) & (
+                        #                     stage_mapping_df["processing_type"].isin(st_type)
+                        #                 )]["processing_stage"].values.tolist()
                         stages = list(set(mine_city_stages[
                                     mine_city_stages["reference_mineral"] == rf
                                     ]["final_refined_stage"].values.tolist()))
@@ -179,25 +181,24 @@ def main(country_codes,offsets,x_text,include_labels=True):
                     df["reference_mineral"] = rf
                     df["color"] = rc
                     dfs.append(df)
-                    # tmax += df["total_tons"].values.tolist()
+                    tmax += df["total_tons"].values.tolist()
                 dfs = pd.concat(dfs,axis=0,ignore_index=True)
                 sc_dfs.append((lyr_nm,dfs,panel_span*idx + 1,panel_span))
         
-            # tmax = max(tmax)
-            # print (tmax)
-            # tmax = 3250000.0
+            tmax = max(tmax)
+            tmax = 2e6
             tonnage_key = 10**np.arange(1,np.ceil(np.log10(tmax)),1)
             sc_dfs.append(tuple(key_info))
             if len(scenarios) == 1:
-                figwidth = 12
+                figwidth = 8
                 figheight = figwidth/(2+len(layers_names)*w)/dxl*dyl/(1-dt)
                 # figheight = 5
-                textfontsize = 8
+                textfontsize = 10
             else:
                 figwidth = 16
                 figheight = figwidth/(2.5+len(layers_names)*w)/dxl*dyl/(1-dt)
                 # figheight = 8
-                textfontsize = 10
+                textfontsize = 12
             fig = plt.figure(figsize=(figwidth,figheight))
             plt.subplots_adjust(left=0, bottom=0, right=1, top=1-dt,wspace=w)
             for jdx, (sc_n,df,pos,span) in enumerate(sc_dfs):
@@ -228,45 +229,40 @@ def main(country_codes,offsets,x_text,include_labels=True):
                                 hd = 'Processed annual output\n(tonnes)'
                             ax.text(xt,yt,hd,weight='bold',fontsize=textfontsize,ha='left',va='center')
                             for k in range(Nk):
-                                ax.text(xk,yk[k],'     {:,.0f}'.format(tonnage_key[k]),fontsize=textfontsize,va='center')
+                                ax.text(
+                                        xk,yk[k],'     {:,.0f}'.format(tonnage_key[k]),
+                                        fontsize=textfontsize,va='center')
                         else:
                             Nk = len(reference_minerals)
                             yk = yl[0] + np.linspace(0.15*dyl,0.4*dyl,Nk) + 0.4*ky*dyl
                             yt = yk[-1]+np.diff(yk[-3:-1])
-                            ax.text(xt,yt,'Mineral produced',weight='bold',fontsize=textfontsize,va='center')
+                            ax.text(xt,yt,'Mineral produced',weight='bold',fontsize=textfontsize,ha='left',va='center')
                             for k in range(Nk):
-                                ax.text(xk,yk[k],'   '+reference_minerals[k].capitalize(),va='center')
+                                ax.text(xk,yk[k],'   '+reference_minerals[k].capitalize(),
+                                        fontsize=textfontsize,va='center')
                                 ax.plot(xk,yk[k],'s',
                                         mfc=reference_mineral_colors[k],
                                         mec=reference_mineral_colors[k],
                                         ms=10)
                 else:
-                    ax = plot_ccg_country_basemap(
-                                        ax,
-                                        include_continents=["Africa"],
-                                        include_countries=country_codes,
-                                        include_labels=include_labels,
-                                        xmin_offset = xmin_offset,
-                                        xmax_offset = xmax_offset,
-                                        ymin_offset = ymin_offset,
-                                        ymax_offset = ymax_offset
-                                        )
-                    ax.set_title(sc_n,fontsize=16,fontweight="bold")
+                    ax = plot_ccg_basemap(
+                                ax,
+                                include_continents=["Africa"],
+                                include_countries=ccg_isos,
+                                include_labels=True
+                                )
+                    ax.set_title(sc_n,fontsize=textfontsize,fontweight="bold")
                     df["markersize"] = marker_size_max*(df["total_tons"]/tmax)**0.5
                     df = df.sort_values(by="total_tons",ascending=False)
-                    if len(df.index) > 0:
-                        df.geometry.plot(
-                            ax=ax, 
-                            color=df["color"], 
-                            edgecolor='none',
-                            markersize=df["markersize"],
-                            alpha=0.7)
-                        total_tons = df["total_tons"].sum()/1e3
-                    else:
-                        total_tons = 0.0
+                    df.geometry.plot(
+                        ax=ax, 
+                        color=df["color"], 
+                        edgecolor='none',
+                        markersize=df["markersize"],
+                        alpha=0.7)
                     ax.text(
-                        xl[0]+x_text*dxl,yl[0]+0.05*dyl,
-                        "Total = {:,.1f} kilotonnes".format(total_tons),
+                        xl[0]+0.5*dxl,yl[0]+0.2*dyl,
+                        'Total = {:.1f} million tonnes'.format(df["total_tons"].sum()/1e6),
                         fontsize=textfontsize,weight='bold',ha='center')  
             fig_nm = '_'.join(list(set(layers))).replace("_min_threshold_metal_tons","").replace("_max_threshold_metal_tons","")
             if ton_type == "initial_stage_production_tons":
@@ -280,26 +276,4 @@ def main(country_codes,offsets,x_text,include_labels=True):
 
 
 if __name__ == '__main__':
-    # ccg_countries = ["AGO","BDI","BWA","COD","KEN","MDG","MOZ","MWI","NAM","TZA","UGA","ZAF","ZMB","ZWE"]
-    ccg_countries = ["ZMB"]
-    default_offset = [-0.2,-0.2,1.0,1.0]
-    zaf_offset = [0.0,10.0,0.0,0.0]
-    right_text = 0.72
-    left_text = 0.30 
-    for ccg in ccg_countries:
-        country_codes = [ccg]
-        if ccg in ["UGA"]:
-            include_labels = False
-        else:
-            include_labels = True
-        if ccg == "ZAF":
-            offsets = zaf_offset
-        elif ccg in ["UGA","MWI","BDI"]:
-            offsets = [-0.2,-0.2,0.0,0.0]
-        else:
-            offsets = default_offset
-        if ccg in ["COD","TZA","AGO","ZWE","MWI","KEN"]:
-            x_text = left_text
-        else:
-            x_text = right_text
-        main(country_codes,offsets,x_text,include_labels=include_labels)
+    main()

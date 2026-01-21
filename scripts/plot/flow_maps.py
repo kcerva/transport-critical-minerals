@@ -27,6 +27,7 @@ def set_geometry_buffer(x,value_column,width_by_range):
 def main(
         config,
         reference_mineral,
+        scenarios,
         years,
         percentiles,
         efficient_scales,
@@ -42,13 +43,9 @@ def main(
 
 
     figures = os.path.join(figure_path,"regional_figures")
-    # if os.path.exists(figures) is False:
-    #     os.mkdir(figures)
     os.makedirs(figures,exist_ok=True)
 
     figures = os.path.join(figure_path,"regional_figures","flow_figures")
-    # if os.path.exists(figures) is False:
-    #     os.mkdir(figures)
     os.makedirs(figures,exist_ok=True)
 
     flow_data_folder = os.path.join(output_data_path,"node_edge_flows")
@@ -61,6 +58,9 @@ def main(
     ccg_countries = pd.read_csv(os.path.join(processed_data_path,"admin_boundaries","ccg_country_codes.csv"))
     ccg_isos = ccg_countries[ccg_countries["ccg_country"] == 1]["iso_3digit_alpha"].values.tolist()
     processing_types = ["Mine","Processing location"]
+    modes = ["road","rail"]
+    mode_types = ["Roads","Railways"]
+    mode_colors = ["#543005","#003c30"]
     processing_colors = mp["node_colors"][:-1]
     link_color = mp["edge_color"]
     
@@ -78,7 +78,7 @@ def main(
     key_info = ["key",pd.DataFrame(),pd.DataFrame(),0,1]
 
     fig_scenario = [
-                    years,
+                    scenarios,
                     percentiles,
                     country_cases
                 ]
@@ -97,14 +97,17 @@ def main(
         else:
             figure_result_file = f"{combination}_{figure_result_file}_scenarios.png"
 
-    combinations = list(zip(years,percentiles,efficient_scales,country_cases,constraints))
-    # nodes_dfs = []
-    # edges_dfs = []
+    combinations = list(zip(scenarios,years,percentiles,efficient_scales,country_cases,constraints))
     sc_dfs = []
     nodes_range = []
     edges_range = []
-    for idx, (y,p,e,cnt,con) in enumerate(combinations):
-        title_name = f"{reference_mineral.title()}: {y} - {p.title()}"
+    for idx, (scn,y,p,e,cnt,con) in enumerate(combinations):
+        scn_rename = scn.replace(" ","_")
+        if scn == "bau":
+            scn_title = "BAU"
+        else:
+            scn_title = scn.title()
+        title_name = f"{reference_mineral.title()}: {scn_title} - {p.title()}"
         if y == 2022:
             layer_name = f"{reference_mineral}_{p}"
         else:
@@ -114,14 +117,14 @@ def main(
             else:
                 title_name = f"{title_name} - Environmental constraints"
         if combination is None:
-            results_gpq = f"flows_{layer_name}_{y}_{cnt}_{con}.geoparquet"
+            results_gpq = f"flows_{layer_name}_{scn_rename}_{y}_{cnt}_{con}.geoparquet"
             optimisation_gpq = f"node_locations_for_energy_conversion_{cnt}_{con}.gpkg"
         else:
             if distance_from_origin > 0.0 or environmental_buffer > 0.0:
-                results_gpq = f"{combination}_flows_{layer_name}_{y}_{cnt}_{con}_op_{ds}km_eb_{eb}km.geoparquet"
+                results_gpq = f"{combination}_flows_{layer_name}_{scn_rename}_{y}_{cnt}_{con}_op_{ds}km_eb_{eb}km.geoparquet"
                 optimisation_gpq = f"{combination}_node_locations_for_energy_conversion_{cnt}_{con}_op_{ds}km_eb_{eb}km.gpkg"
             else:
-                results_gpq = f"{combination}_flows_{layer_name}_{y}_{cnt}_{con}.geoparquet"
+                results_gpq = f"{combination}_flows_{layer_name}_{scn_rename}_{y}_{cnt}_{con}.geoparquet"
                 optimisation_gpq = f"{combination}_node_locations_for_energy_conversion_{cnt}_{con}.gpkg"
 
         edge_file_path = os.path.join(flow_data_folder,
@@ -153,7 +156,7 @@ def main(
             if y == 2022:
                 layer_name = f"{y}_{p}"
             else:
-                layer_name = f"{y}_{p}_{e}"          
+                layer_name = f"{scn_rename}_{y}_{p}_{e}"          
             nodes_flows_df = gpd.read_file(
                                 os.path.join(
                                     node_data_folder,
@@ -191,11 +194,11 @@ def main(
         if sc_l == 1:
             figwidth = 8
             figheight = figwidth/(2+sc_l*w)/dxl*dyl/(1-dt)
-            textfontsize = 10
+            textfontsize = 9
         else:
             figwidth = 16
             figheight = figwidth/(2.5+sc_l*w)/dxl*dyl/(1-dt)
-            textfontsize = 10
+            textfontsize = 9
         fig = plt.figure(figsize=(figwidth,figheight))
         plt.subplots_adjust(left=0, bottom=0, right=1, top=1-dt,wspace=w)
         for jdx, (sc_n,e_df,n_df,pos,span) in enumerate(sc_dfs):
@@ -205,12 +208,13 @@ def main(
             ax.set_xticks([])
             ax.set_yticks([])
             if sc_n == "key":
-                ax.set_ylim(yl)
+                print (yl)
+                ax.set_ylim([yl[0],3*yl[1]])
                 # ax.set_xlim(xl[0]+0.2*dxl,xl[1])
                 ax.set_xlim(xl)
                 xk = xl[0] + 0.10*dxl
                 xt = xk-0.04*dxl
-                keys = ['edge_tonnage','node_tonnage','location']
+                keys = ['edge_tonnage','node_tonnage','mode','location']
                 for ky in range(len(keys)):
                     key = keys[ky]
                     if key == 'node_tonnage':
@@ -248,9 +252,21 @@ def main(
                         ax.text(xt,yt,'Links annual output (tonnes)',weight='bold',fontsize=10,va='center')
                         for k in range(Nk):
                             ax.text(xk,yk[k],'     {:,.0f} - {:,.0f}'.format(min_max_vals[k][0],min_max_vals[k][1]),va='center')
+                    elif key == "mode":
+                        Nk = len(mode_types)
+                        yk = yl[0] + np.linspace(0.05*dyl,0.12*dyl,Nk) + 0.4*ky*dyl
+                        yt = yk[-1]+np.diff(yk)[0]
+                        ax.text(xt,yt,'Mode type',weight='bold',fontsize=10,va='center')
+                        for k in range(Nk): 
+                            ax.text(xk,yk[k],'   '+mode_types[k].capitalize(),va='center')
+                            ax.plot(xk,yk[k],'s',
+                                    mfc=mode_colors[k],
+                                    mec=mode_colors[k],
+                                    ms=10)
                     else:
                         Nk = len(processing_types)
-                        yk = yl[0] + np.linspace(0.05*dyl,0.12*dyl,Nk) + 0.4*ky*dyl
+                        yk = yl[0] + np.linspace(0.05*dyl,0.12*dyl,Nk) + 0.35*ky*dyl
+                        print (yk)
                         yt = yk[-1]+np.diff(yk)[0]
                         ax.text(xt,yt,'Location type',weight='bold',fontsize=10,va='center')
                         for k in range(Nk):
@@ -267,13 +283,14 @@ def main(
                             include_labels=True
                             )
                 ax.set_title(sc_n,fontsize=textfontsize,fontweight="bold")
-                # e_df["linewidth"] = line_width_max*(np.log10(e_df[flow_column])/np.log10(e_tmax))
                 e_df["linewidth"] = e_df.progress_apply(
                                         lambda x:set_geometry_buffer(
                                             x,flow_column,e_tonnage_weights),
                                         axis=1)
                 e_df["geometry"] = e_df.progress_apply(lambda x:x.geometry.buffer(x.linewidth),axis=1)
-                e_df.geometry.plot(ax=ax,facecolor=link_color,edgecolor='none',linewidth=0,alpha=0.7)
+                for ndx,(mt,mc) in enumerate(zip(modes,mode_colors)):
+                    p_df = e_df[e_df["mode"] == mt]
+                    p_df.geometry.plot(ax=ax,facecolor=mc,edgecolor='none',linewidth=0,alpha=0.7)
                 n_df["markersize"] = marker_size_max*(n_df[flow_column]/n_tmax)**0.5
                 n_df = n_df.sort_values(by=flow_column,ascending=False)
                 n_df.geometry.plot(
@@ -283,23 +300,7 @@ def main(
                     markersize=n_df["markersize"],
                     alpha=0.7)
 
-        # fig_nm = '_'.join(list(set(layers))).replace("_min_threshold_metal_tons","").replace("_max_threshold_metal_tons","")
-        # if ton_type == "initial_stage_production_tons":
-        #     fig_file = f"mine_metal_content_maps_{fig_nm}.png"
-        # else:
-        #     fig_nm = fig_nm + '_' + '_'.join(list(set(scenario_names)))
-        #     fig_file = f"{rt}_processing_locations_maps_{fig_nm}.png"
         plt.tight_layout()
-        
-        scenario = [
-                        years,
-                        percentiles,
-                        country_cases
-                    ]
-        st = ""
-        for sc in scenario:
-            st += "_" + '_'.join(list(set(map(str,sc))))
-
         save_fig(os.path.join(figures,figure_result_file))
         plt.close()
 
@@ -307,23 +308,25 @@ def main(
 if __name__ == '__main__':
     CONFIG = load_config()
     try:
-        if len(sys.argv) > 7:
+        if len(sys.argv) > 8:
             reference_mineral = str(sys.argv[1])
-            years = ast.literal_eval(str(sys.argv[2]))
-            percentiles = ast.literal_eval(str(sys.argv[3]))
-            efficient_scales = ast.literal_eval(str(sys.argv[4]))
-            country_cases = ast.literal_eval(str(sys.argv[5]))
-            constraints = ast.literal_eval(str(sys.argv[6]))
-            combination = str(sys.argv[7])
-            distance_from_origin = float(sys.argv[8])
-            environmental_buffer = float(sys.argv[9])
+            scenarios = ast.literal_eval(str(sys.argv[2]))
+            years = ast.literal_eval(str(sys.argv[3]))
+            percentiles = ast.literal_eval(str(sys.argv[4]))
+            efficient_scales = ast.literal_eval(str(sys.argv[5]))
+            country_cases = ast.literal_eval(str(sys.argv[6]))
+            constraints = ast.literal_eval(str(sys.argv[7]))
+            combination = str(sys.argv[8])
+            distance_from_origin = float(sys.argv[9])
+            environmental_buffer = float(sys.argv[10])
         else:
             reference_mineral = str(sys.argv[1])
-            years = ast.literal_eval(str(sys.argv[2]))
-            percentiles = ast.literal_eval(str(sys.argv[3]))
-            efficient_scales = ast.literal_eval(str(sys.argv[4]))
-            country_cases = ast.literal_eval(str(sys.argv[5]))
-            constraints = ast.literal_eval(str(sys.argv[6]))
+            scenarios = ast.literal_eval(str(sys.argv[2]))
+            years = ast.literal_eval(str(sys.argv[3]))
+            percentiles = ast.literal_eval(str(sys.argv[4]))
+            efficient_scales = ast.literal_eval(str(sys.argv[5]))
+            country_cases = ast.literal_eval(str(sys.argv[6]))
+            constraints = ast.literal_eval(str(sys.argv[7]))
             combination = None
             distance_from_origin = 0.0
             environmental_buffer = 0.0
@@ -333,6 +336,7 @@ if __name__ == '__main__':
     main(
             CONFIG,
             reference_mineral,
+            scenarios,
             years,
             percentiles,
             efficient_scales,

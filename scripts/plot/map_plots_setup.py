@@ -10,32 +10,36 @@ def main(config):
     processed_data_path = config['paths']['data']
     
     reference_minerals = ["graphite","lithium","cobalt","manganese","nickel","copper"]
-    baseline_scenario = [[2022],["baseline"],["none"],["country"],["unconstrained"]]
+    scenarios = ["bau","early refining","precursor"]
+    baseline_scenario = [["baseline"],[2022],["baseline"],["none"],["country"],["unconstrained"]]
     future_scenarios = []
     future_scenarios.append(baseline_scenario)
     p = "min_threshold_metal_tons"
     c = "country"
-    for y in [2030,2040]:
-        fsc = []
-        for o in ["unconstrained","constrained"]:
-            for s in ["mid"]:
-                fsc.append((y,s,p,c,o))
+    for scn in scenarios:
+        for y in [2040]:
+            fsc = []
+            for o in ["unconstrained","constrained"]:
+                for s in ["mid"]:
+                    fsc.append((scn,y,s,p,c,o))
 
         future_scenarios.append(list(map(list,zip(*fsc))))
 
     p = "max_threshold_metal_tons"
     c = "region"
-    for y in [2030,2040]:
-        fsc = []
-        for o in ["unconstrained","constrained"]:
-            for s in ["mid"]:
-                fsc.append((y,s,p,c,o))
+    for scn in scenarios:
+        for y in [2040]:
+            fsc = []
+            for o in ["unconstrained","constrained"]:
+                for s in ["mid"]:
+                    fsc.append((scn,y,s,p,c,o))
 
         future_scenarios.append(list(map(list,zip(*fsc))))
 
     with open("map_plots_set.txt","w+") as f:
         for rf in reference_minerals:
-            for case in ["noncombined","combined"]:
+            # for case in ["noncombined","combined"]:
+            for case in ["combined"]:
                 for row in future_scenarios:
                     st = f"{rf};"
                     if case == "noncombined":
@@ -61,38 +65,25 @@ def main(config):
         print (args)
         subprocess.run(args)
 
-    num_blocks = 12
     run_script = False
     if run_script is True:
         args = [
-                "parallel",
-                "-j", str(num_blocks),
-                "--colsep", ";",
-                "-a",
-                "map_plots_set.txt",
                 "python",
-                "flow_maps.py",
-                "{}"
+                "location_maps_scenarios.py"
                 ]
-        print ("* Start the processing of plotting flows")
+        print ("* Plot regional location maps")
         print (args)
         subprocess.run(args)
 
     run_script = False
     if run_script is True:
         args = [
-                "parallel",
-                "-j", str(num_blocks),
-                "--colsep", ";",
-                "-a",
-                "map_plots_set.txt",
                 "python",
-                "zambia_flow_maps.py",
-                "{}"
+                "env_layers_with_mines.py"
                 ]
-        print ("* Start the processing of plotting flows")
+        print ("* Plot regional location maps with environmental filters")
         print (args)
-        subprocess.run(args) 
+        subprocess.run(args)
 
     with open("aggregated_map_plots_set.txt","w+") as f:
         for case in ["noncombined","combined"]:
@@ -127,7 +118,28 @@ def main(config):
                 ]
         print ("* Start the processing of plotting flows")
         print (args)
-        subprocess.run(args)               
+        subprocess.run(args)
+
+
+    run_script = False
+    if run_script is True:
+        args = [
+                "python",
+                "country_location_maps.py"
+                ]
+        print ("* Plot Country location maps")
+        print (args)
+        subprocess.run(args)
+
+    run_script = False
+    if run_script is True:
+        args = [
+                "python",
+                "country_env_maps.py"
+                ]
+        print ("* Plot Country location maps with environmental filters")
+        print (args)
+        subprocess.run(args)
 
     run_script = False
     if run_script is True:
@@ -136,9 +148,26 @@ def main(config):
                 "-j", str(num_blocks),
                 "--colsep", ";",
                 "-a",
-                "aggregated_map_plots_set.txt",
+                "map_plots_set.txt",
                 "python",
-                "zambia_agg_flow_maps.py",
+                "zambia_flow_maps.py",
+                "{}"
+                ]
+        print ("* Start the processing of plotting flows")
+        print (args)
+        subprocess.run(args) 
+
+    num_blocks = 12
+    run_script = False
+    if run_script is True:
+        args = [
+                "parallel",
+                "-j", str(num_blocks),
+                "--colsep", ";",
+                "-a",
+                "map_plots_set.txt",
+                "python",
+                "flow_maps.py",
                 "{}"
                 ]
         print ("* Start the processing of plotting flows")

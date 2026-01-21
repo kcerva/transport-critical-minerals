@@ -26,6 +26,7 @@ def set_geometry_buffer(x,value_column,width_by_range):
 
 def main(
         config,
+        scenarios,
         years,
         percentiles,
         efficient_scales,
@@ -39,15 +40,10 @@ def main(
     output_data_path = config['paths']['results']
     figure_path = config['paths']['figures']
 
-
     figures = os.path.join(figure_path,"regional_figures")
-    # if os.path.exists(figures) is False:
-    #     os.mkdir(figures)
     os.makedirs(figures,exist_ok=True)
 
     figures = os.path.join(figure_path,"regional_figures","aggregated_flow_figures")
-    # if os.path.exists(figures) is False:
-    #     os.mkdir(figures)
     os.makedirs(figures,exist_ok=True)
 
 
@@ -60,6 +56,9 @@ def main(
     ccg_isos = ccg_countries[ccg_countries["ccg_country"] == 1]["iso_3digit_alpha"].values.tolist()
     
     link_color = "#525252"
+    modes = ["road","rail"]
+    mode_types = ["Roads","Railways"]
+    mode_colors = ["#543005","#003c30"]
     
     _,_,xl,yl = map_background_and_bounds(include_countries=ccg_isos)
     dxl = abs(np.diff(xl))[0]
@@ -72,10 +71,11 @@ def main(
     width_step = 0.08
     interpolation='fisher-jenks'
     key_info = ["key",pd.DataFrame(),0,1]
-    max_flow = 21000000.00
+    max_flow = 12000000.00
+    min_flow = 0.03
 
     fig_scenario = [
-                    years,
+                    scenarios,
                     percentiles,
                     country_cases
                 ]
@@ -94,15 +94,20 @@ def main(
         else:
             figure_result_file = f"{combination}_{figure_result_file}_scenarios.png"
 
-    combinations = list(zip(years,percentiles,efficient_scales,country_cases,constraints))
+    combinations = list(zip(scenarios,years,percentiles,efficient_scales,country_cases,constraints))
     sc_dfs = []
     edges_range = []
-    for idx, (y,p,e,cnt,con) in enumerate(combinations):
-        title_name = f"{y} - {p.title()}"
+    for idx, (scn,y,p,e,cnt,con) in enumerate(combinations):
+        scn_rename = scn.replace(" ","_")
+        if scn == "bau":
+            scn_title = "BAU"
+        else:
+            scn_title = scn.title()
+        title_name = f"{scn_title} - {p.title()}"
         if y == 2022:
             layer_name = f"{p}"
         else:
-            layer_name = f"{p}_{e}"
+            layer_name = f"{p}_{e}_{scn_rename}"
             if con == "unconstrained":
                 title_name = f"{title_name} - No Environmental constraints"
             else:
@@ -146,7 +151,8 @@ def main(
             make_plot = False
 
     if make_plot is True:
-        edges_range += [max_flow]
+        # edges_range += [max_flow]
+        edges_range = [min_flow,2e5,1e6,4e6,8e6,max_flow]
         e_tmax = max(edges_range)
         e_tonnage_weights = generate_weight_bins(edges_range, 
                                 width_step=width_step, 
@@ -158,11 +164,11 @@ def main(
         if sc_l == 1:
             figwidth = 8
             figheight = figwidth/(2+sc_l*w)/dxl*dyl/(1-dt)
-            textfontsize = 12
+            textfontsize = 9
         else:
             figwidth = 16
             figheight = figwidth/(2.5+sc_l*w)/dxl*dyl/(1-dt)
-            textfontsize = 12
+            textfontsize = 10
         fig = plt.figure(figsize=(figwidth,figheight))
         plt.subplots_adjust(left=0, bottom=0, right=1, top=1-dt,wspace=w)
         for jdx, (sc_n,e_df,pos,span) in enumerate(sc_dfs):
@@ -177,30 +183,45 @@ def main(
                 # ax.set_xlim(xl)
                 xk = xl[0] + 0.65*dxl
                 xt = xk-0.04*dxl
-                Nk = len(e_tonnage_weights)
-                yk = yl[0] + np.linspace(0.15*dyl,0.4*dyl,Nk)
-                yt = yk[-1]+np.diff(yk[-3:-1])
-                
-                widths = []
-                min_max_vals = []
-                for (i, ((nmin, nmax), w)) in enumerate(e_tonnage_weights.items()):
-                    widths.append(w)
-                    min_max_vals.append((nmin,nmax))
-                min_max_vals = min_max_vals[::-1]
-                key_1 = gpd.GeoDataFrame(geometry=gpd.points_from_xy(np.ones(Nk)*xk, yk))
-                key_1["id"] = key_1.index.values.tolist()
-                key_2 = gpd.GeoDataFrame(geometry=gpd.points_from_xy(1.03*np.ones(Nk)*xk, yk))
-                key_2["id"] = key_2.index.values.tolist()
-                key = pd.concat([key_1,key_2],axis=0,ignore_index=False)
-                key = key.groupby(['id'])['geometry'].apply(lambda x: LineString(x.tolist())).reset_index()
-                key = gpd.GeoDataFrame(key, geometry='geometry')
-                key["buffersize"] = widths[::-1]
-                key["geometry"] = key.progress_apply(lambda x:x.geometry.buffer(x.buffersize),axis=1)
-                key = gpd.GeoDataFrame(key, geometry='geometry')
-                key.geometry.plot(ax=ax,linewidth=0,facecolor='k',edgecolor='none')
-                ax.text(xt,yt,'Links annual output (tonnes)',weight='bold',fontsize=10,va='center')
-                for k in range(Nk):
-                    ax.text(xk,yk[k],'     {:,.0f} - {:,.0f}'.format(min_max_vals[k][0],min_max_vals[k][1]),va='center')
+                keys = ['edge_tonnage','mode']
+                for ky in range(len(keys)):
+                    key = keys[ky]
+                    if key == "edge_tonnage":
+                        Nk = len(e_tonnage_weights)
+                        yk = yl[0] + np.linspace(0.15*dyl,0.4*dyl,Nk)
+                        yt = yk[-1]+np.diff(yk[-3:-1])
+                        
+                        widths = []
+                        min_max_vals = []
+                        for (i, ((nmin, nmax), w)) in enumerate(e_tonnage_weights.items()):
+                            widths.append(w)
+                            min_max_vals.append((nmin,nmax))
+                        min_max_vals = min_max_vals[::-1]
+                        key_1 = gpd.GeoDataFrame(geometry=gpd.points_from_xy(np.ones(Nk)*xk, yk))
+                        key_1["id"] = key_1.index.values.tolist()
+                        key_2 = gpd.GeoDataFrame(geometry=gpd.points_from_xy(1.03*np.ones(Nk)*xk, yk))
+                        key_2["id"] = key_2.index.values.tolist()
+                        key = pd.concat([key_1,key_2],axis=0,ignore_index=False)
+                        key = key.groupby(['id'])['geometry'].apply(lambda x: LineString(x.tolist())).reset_index()
+                        key = gpd.GeoDataFrame(key, geometry='geometry')
+                        key["buffersize"] = widths[::-1]
+                        key["geometry"] = key.progress_apply(lambda x:x.geometry.buffer(x.buffersize),axis=1)
+                        key = gpd.GeoDataFrame(key, geometry='geometry')
+                        key.geometry.plot(ax=ax,linewidth=0,facecolor='k',edgecolor='none')
+                        ax.text(xt,yt,'Links annual output (tonnes)',weight='bold',fontsize=textfontsize,va='center')
+                        for k in range(Nk):
+                            ax.text(xk,yk[k],'     {:,.0f} - {:,.0f}'.format(min_max_vals[k][0],min_max_vals[k][1]),fontsize=textfontsize,va='center')
+                    else:
+                        Nk = len(mode_types)
+                        yk = yl[0] + np.linspace(0.15*dyl,0.20*dyl,Nk) + 0.4*ky*dyl
+                        yt = yk[-1]+np.diff(yk)[0]
+                        ax.text(xt,yt,'Mode type',weight='bold',fontsize=textfontsize,va='center')
+                        for k in range(Nk): 
+                            ax.text(xk,yk[k],'   '+mode_types[k].capitalize(),fontsize=textfontsize,va='center')
+                            ax.plot(xk,yk[k],'s',
+                                    mfc=mode_colors[k],
+                                    mec=mode_colors[k],
+                                    ms=10)
             else:
                 ax = plot_ccg_basemap(
                             ax,
@@ -210,12 +231,16 @@ def main(
                             )
                 ax.set_title(sc_n,fontsize=textfontsize,fontweight="bold")
                 # e_df["linewidth"] = line_width_max*(np.log10(e_df[flow_column])/np.log10(e_tmax))
+                e_df = e_df.sort_values(by=flow_column,ascending=False)
                 e_df["linewidth"] = e_df.progress_apply(
                                         lambda x:set_geometry_buffer(
                                             x,flow_column,e_tonnage_weights),
                                         axis=1)
                 e_df["geometry"] = e_df.progress_apply(lambda x:x.geometry.buffer(x.linewidth),axis=1)
-                e_df.geometry.plot(ax=ax,facecolor=link_color,edgecolor='none',linewidth=0,alpha=0.7)
+                # e_df.geometry.plot(ax=ax,facecolor=link_color,edgecolor='none',linewidth=0,alpha=0.7)
+                for ndx,(mt,mc) in enumerate(zip(modes,mode_colors)):
+                    p_df = e_df[e_df["mode"] == mt]
+                    p_df.geometry.plot(ax=ax,facecolor=mc,edgecolor='none',linewidth=0,alpha=0.7)
 
         plt.tight_layout()
         save_fig(os.path.join(figures,figure_result_file))
@@ -225,21 +250,23 @@ def main(
 if __name__ == '__main__':
     CONFIG = load_config()
     try:
-        if len(sys.argv) > 6:
-            years = ast.literal_eval(str(sys.argv[1]))
-            percentiles = ast.literal_eval(str(sys.argv[2]))
-            efficient_scales = ast.literal_eval(str(sys.argv[3]))
-            country_cases = ast.literal_eval(str(sys.argv[4]))
-            constraints = ast.literal_eval(str(sys.argv[5]))
-            combination = str(sys.argv[6])
-            distance_from_origin = float(sys.argv[7])
-            environmental_buffer = float(sys.argv[8])
+        if len(sys.argv) > 7:
+            scenarios = ast.literal_eval(str(sys.argv[1]))
+            years = ast.literal_eval(str(sys.argv[2]))
+            percentiles = ast.literal_eval(str(sys.argv[3]))
+            efficient_scales = ast.literal_eval(str(sys.argv[4]))
+            country_cases = ast.literal_eval(str(sys.argv[5]))
+            constraints = ast.literal_eval(str(sys.argv[6]))
+            combination = str(sys.argv[7])
+            distance_from_origin = float(sys.argv[8])
+            environmental_buffer = float(sys.argv[9])
         else:
-            years = ast.literal_eval(str(sys.argv[1]))
-            percentiles = ast.literal_eval(str(sys.argv[2]))
-            efficient_scales = ast.literal_eval(str(sys.argv[3]))
-            country_cases = ast.literal_eval(str(sys.argv[4]))
-            constraints = ast.literal_eval(str(sys.argv[5]))
+            scenarios = ast.literal_eval(str(sys.argv[1]))
+            years = ast.literal_eval(str(sys.argv[2]))
+            percentiles = ast.literal_eval(str(sys.argv[3]))
+            efficient_scales = ast.literal_eval(str(sys.argv[4]))
+            country_cases = ast.literal_eval(str(sys.argv[5]))
+            constraints = ast.literal_eval(str(sys.argv[6]))
             combination = None
             distance_from_origin = 0.0
             environmental_buffer = 0.0
@@ -248,6 +275,7 @@ if __name__ == '__main__':
         exit()
     main(
             CONFIG,
+            scenarios,
             years,
             percentiles,
             efficient_scales,
