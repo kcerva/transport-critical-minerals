@@ -391,3 +391,46 @@ def validate_route_sequence(country_stages, invalid_routes):
     
     return False, None
 
+
+# =============================================================================
+# FIXED COUNTRY COLOR MAPPING
+# =============================================================================
+# Fixed colors for African countries to ensure consistency across all figures
+# Based on matplotlib tab20 palette with alphabetical country ordering
+# This ensures colors remain consistent regardless of which countries appear in each figure
+COUNTRY_COLORS = {
+    "AGO": "#1f77b4",  # Angola
+    "BDI": "#aec7e8",  # Burundi
+    "BWA": "#ff7f0e",  # Botswana
+    "COD": "#ffbb78",  # DR Congo
+    "KEN": "#2ca02c",  # Kenya
+    "MDG": "#98df8a",  # Madagascar
+    "MOZ": "#d62728",  # Mozambique
+    "MWI": "#ff9896",  # Malawi
+    "NAM": "#9467bd",  # Namibia
+    "TZA": "#c5b0d5",  # Tanzania
+    "UGA": "#8c564b",  # Uganda
+    "ZAF": "#c49c94",  # South Africa
+    "ZMB": "#e377c2",  # Zambia
+    "ZWE": "#f7b6d2",  # Zimbabwe
+    "Other": "#999999",  # Other/aggregated
+}
+
+# Short name mapping for countries
+COUNTRY_NAMES = {
+    "AGO": "Angola",
+    "BDI": "Burundi",
+    "BWA": "Botswana",
+    "COD": "DR Congo",
+    "KEN": "Kenya",
+    "MDG": "Madagascar",
+    "MOZ": "Mozambique",
+    "MWI": "Malawi",
+    "NAM": "Namibia",
+    "TZA": "Tanzania",
+    "UGA": "Uganda",
+    "ZAF": "South Africa",
+    "ZMB": "Zambia",
+    "ZWE": "Zimbabwe",
+}
+

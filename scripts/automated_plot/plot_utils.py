@@ -31,11 +31,30 @@ def get_mineral_colors_short():
     return REFERENCE_MINERAL_COLORMAPSHORT
 
 def generate_country_colormap(iso3_list):
-    sorted_countries = sorted(iso3_list)
-    color_palette = plt.cm.tab20.colors
-    repeats = -(-len(sorted_countries) // len(color_palette))  # ceiling division
-    full_palette = (color_palette * repeats)[:len(sorted_countries)]
-    return dict(zip(sorted_countries, full_palette))
+    """
+    Generate country color mapping using fixed colors from plot_config.
+
+    Uses COUNTRY_COLORS from plot_config.py to ensure consistent colors
+    across all figures regardless of which subset of countries appears.
+    Falls back to tab20 palette for any countries not in the fixed mapping.
+    """
+    from plot_config import COUNTRY_COLORS
+
+    result = {}
+    # First, use fixed colors for known countries
+    for country in iso3_list:
+        if country in COUNTRY_COLORS:
+            result[country] = COUNTRY_COLORS[country]
+
+    # For any unknown countries, fall back to tab20
+    unknown_countries = [c for c in iso3_list if c not in COUNTRY_COLORS]
+    if unknown_countries:
+        sorted_unknown = sorted(unknown_countries)
+        color_palette = plt.cm.tab20.colors
+        for i, country in enumerate(sorted_unknown):
+            result[country] = color_palette[i % len(color_palette)]
+
+    return result
 
 def annotate_bar_labels(ax, pivot, orientation="horizontal", min_display_frac=0.05):
     if orientation == 'horizontal':
