@@ -38,7 +38,7 @@ def main():
     dt = 0.05
     panel_span = 2
     marker_size_max = 600
-    key_info = ["key",pd.DataFrame(),0,1]
+    key_info = ["key",pd.DataFrame(),0,1,True]
     reference_minerals = ["cobalt", "copper", "graphite", "lithium", "manganese", "nickel"]
     reference_mineral_colors = ["#3288bd", "#fee08b", "#66c2a5", "#c2a5cf", "#fdae61", "#f46d43"]
     plot_descriptions = [
@@ -63,6 +63,21 @@ def main():
                                 "layers_names":["2040 - No Environmental constraints",
                                                 "2040 - Environmental constraints"]
                             },
+                            {
+                                "type":"initial_stage_production_tons",
+                                "stage_type":["Metal content"],
+                                "scenarios":["country_unconstrained","country_unconstrained","country_constrained"],
+                                "scenario_names":["country","country","country"],
+                                "years":[2022,2040,2040],
+                                "layers":[
+                                            "2022_baseline",
+                                            "bau_2040_mid_min_threshold_metal_tons",
+                                            "bau_2040_mid_min_threshold_metal_tons"],
+                                "layers_names":["2022 - Baseline",
+                                                "2040 - No Environmental constraints",
+                                                "2040 - Environmental constraints"],
+                                "show_filters":[False, False, True]
+                            },
                         ]
     result_type = ["combined"]
     for rt in result_type:
@@ -74,10 +89,11 @@ def main():
             years = plot["years"]
             layers = plot["layers"]
             layers_names = plot["layers_names"]
-            combos = enumerate(zip(years,scenarios,scenario_names,layers,layers_names))
+            show_filters_list = plot.get("show_filters", [True]*len(scenarios))
+            combos = enumerate(zip(years,scenarios,scenario_names,layers,layers_names,show_filters_list))
             sc_dfs = []
             tmax = []
-            for idx, (y, sc, sc_nm, lyr, lyr_nm) in combos:
+            for idx, (y, sc, sc_nm, lyr, lyr_nm, show_filt) in combos:
                 if rt == "combined":
                     fname = f"{rt}_node_locations_for_energy_conversion_{sc}.gpkg"
                 else:
@@ -126,7 +142,7 @@ def main():
                     dfs.append(df)
                     tmax += df["total_tons"].values.tolist()
                 dfs = pd.concat(dfs,axis=0,ignore_index=True)
-                sc_dfs.append((lyr_nm,dfs,panel_span*idx + 1,panel_span))
+                sc_dfs.append((lyr_nm,dfs,panel_span*idx + 1,panel_span,show_filt))
         
             tmax = max(tmax)
             tmax = 2e6
@@ -135,22 +151,29 @@ def main():
             if len(scenarios) == 1:
                 figwidth = 8
                 figheight = figwidth/(2+len(layers_names)*w)/dxl*dyl/(1-dt)
-                # figheight = 5
                 textfontsize = 6.5
                 textfontsize_heading = 7.5
                 textfontsize_title = 12
                 textfontsize_legend = 8
+            elif len(scenarios) == 3:
+                figwidth = 22
+                figheight = figwidth/(3.5+len(layers_names)*w)/dxl*dyl/(1-dt)
+                textfontsize = 8
+                textfontsize_heading = 9
+                textfontsize_title = 14
+                textfontsize_legend = 9
             else:
                 figwidth = 16
                 figheight = figwidth/(2.5+len(layers_names)*w)/dxl*dyl/(1-dt)
-                # figheight = 8
                 textfontsize = 9
                 textfontsize_heading = 10
                 textfontsize_title = 16
                 textfontsize_legend = 10
             fig = plt.figure(figsize=(figwidth,figheight))
             plt.subplots_adjust(left=0, bottom=0, right=1, top=1-dt,wspace=w)
-            for jdx, (sc_n,df,pos,span) in enumerate(sc_dfs):
+            # Check if any panel in this plot shows filters (for legend key)
+            any_filters = any(sf for _, _, _, _, sf in sc_dfs)
+            for jdx, (sc_n,df,pos,span,show_filt) in enumerate(sc_dfs):
                 ax = plt.subplot2grid([1,2*len(scenarios)+1],[0,pos],1,colspan=span)
                 ax.spines[['top','right','bottom','left']].set_visible(False)
                 ax.set_aspect('equal')
@@ -161,7 +184,7 @@ def main():
                     ax.set_xlim(xl[0]+0.58*dxl,xl[1])
                     xk = xl[0] + 0.63*dxl
                     xt = xk-0.04*dxl
-                    keys = ['tonnage','filter_type','mineral']
+                    keys = ['tonnage','filter_type','mineral'] if any_filters else ['tonnage','mineral']
                     for ky in range(len(keys)):
                         key = keys[ky]
                         if key == 'tonnage':
@@ -224,50 +247,53 @@ def main():
                     ax.text(
                         xl[0]+0.58*dxl,yl[0]+0.32*dyl,
                         'Total = {:.1f}'.format(df["total_tons"].sum()/1e6),
-                        fontsize=textfontsize,weight='bold',ha='left') 
-                    total_filter_df = df[df["total_filter"] == 1]
-                    total_filter_df.geometry.plot(
-                        ax=ax, 
-                        color=df["color"], 
-                        edgecolor='none',
-                        markersize=df["markersize"],
-                        linewidth=0.5,
-                        hatch = "xxxxxx",
-                        alpha=0.7)
-                    ax.text(
-                        xl[0]+0.58*dxl,yl[0]+0.29*dyl,
-                        'Protected and water stress areas = {:.1f}'.format(total_filter_df["total_tons"].sum()/1e6),
                         fontsize=textfontsize,weight='bold',ha='left')
-                    env_filter_df = df[(df["total_filter"] != 1) & (df["env_filter"] == 1)]
-                    env_filter_df.geometry.plot(
-                        ax=ax, 
-                        color=df["color"], 
-                        edgecolor='none',
-                        markersize=df["markersize"],
-                        linewidth=0.5,
-                        hatch = "||||||",
-                        alpha=0.7)
-                    ax.text(
-                        xl[0]+0.58*dxl,yl[0]+0.26*dyl,
-                        'Protected areas only = {:.1f}'.format(env_filter_df["total_tons"].sum()/1e6),
-                        fontsize=textfontsize,weight='bold',ha='left')
-                    water_filter_df = df[(df["total_filter"] != 1) & (df["water_filter"] == 1)]
-                    water_filter_df.geometry.plot(
-                        ax=ax, 
-                        color=df["color"], 
-                        edgecolor='none',
-                        markersize=df["markersize"],
-                        linewidth=0.5,
-                        hatch = "++++++",
-                        alpha=0.7)
-                    ax.text(
-                        xl[0]+0.58*dxl,yl[0]+0.23*dyl,
-                        'Water stress areas only = {:.1f}'.format(water_filter_df["total_tons"].sum()/1e6),
-                        fontsize=textfontsize,weight='bold',ha='left')
-                    df = df[(df["env_filter"] == 0) & (df["water_filter"] == 0)]
+                    if show_filt:
+                        # Show filtered mines with hatching and breakdown text
+                        total_filter_df = df[df["total_filter"] == 1]
+                        total_filter_df.geometry.plot(
+                            ax=ax,
+                            color=df["color"],
+                            edgecolor='none',
+                            markersize=df["markersize"],
+                            linewidth=0.5,
+                            hatch = "xxxxxx",
+                            alpha=0.7)
+                        ax.text(
+                            xl[0]+0.58*dxl,yl[0]+0.29*dyl,
+                            'Protected and water stress areas = {:.1f}'.format(total_filter_df["total_tons"].sum()/1e6),
+                            fontsize=textfontsize,weight='bold',ha='left')
+                        env_filter_df = df[(df["total_filter"] != 1) & (df["env_filter"] == 1)]
+                        env_filter_df.geometry.plot(
+                            ax=ax,
+                            color=df["color"],
+                            edgecolor='none',
+                            markersize=df["markersize"],
+                            linewidth=0.5,
+                            hatch = "||||||",
+                            alpha=0.7)
+                        ax.text(
+                            xl[0]+0.58*dxl,yl[0]+0.26*dyl,
+                            'Protected areas only = {:.1f}'.format(env_filter_df["total_tons"].sum()/1e6),
+                            fontsize=textfontsize,weight='bold',ha='left')
+                        water_filter_df = df[(df["total_filter"] != 1) & (df["water_filter"] == 1)]
+                        water_filter_df.geometry.plot(
+                            ax=ax,
+                            color=df["color"],
+                            edgecolor='none',
+                            markersize=df["markersize"],
+                            linewidth=0.5,
+                            hatch = "++++++",
+                            alpha=0.7)
+                        ax.text(
+                            xl[0]+0.58*dxl,yl[0]+0.23*dyl,
+                            'Water stress areas only = {:.1f}'.format(water_filter_df["total_tons"].sum()/1e6),
+                            fontsize=textfontsize,weight='bold',ha='left')
+                        df = df[(df["env_filter"] == 0) & (df["water_filter"] == 0)]
+                    # Plot remaining (or all) mines without hatching
                     df.geometry.plot(
-                        ax=ax, 
-                        color=df["color"], 
+                        ax=ax,
+                        color=df["color"],
                         edgecolor='none',
                         markersize=df["markersize"],
                         alpha=0.7)

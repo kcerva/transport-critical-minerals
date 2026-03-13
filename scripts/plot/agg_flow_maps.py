@@ -103,10 +103,11 @@ def main(
             scn_title = "BAU"
         else:
             scn_title = scn.title()
-        title_name = f"{scn_title} - {p.title()}"
         if y == 2022:
+            title_name = f"{y} Baseline"
             layer_name = f"{p}"
         else:
+            title_name = f"{scn_title} - {p.title()}"
             layer_name = f"{p}_{e}_{scn_rename}"
             if con == "unconstrained":
                 title_name = f"{title_name} - No Environmental constraints"
@@ -160,10 +161,14 @@ def main(
                                 interpolation=interpolation)
         sc_dfs.append(tuple(key_info))
         
-        sc_l = len(sc_dfs) - 1 
+        sc_l = len(sc_dfs) - 1
         if sc_l == 1:
             figwidth = 8
             figheight = figwidth/(2+sc_l*w)/dxl*dyl/(1-dt)
+            textfontsize = 9
+        elif sc_l == 3:
+            figwidth = 22
+            figheight = figwidth/(3.5+sc_l*w)/dxl*dyl/(1-dt)
             textfontsize = 9
         else:
             figwidth = 16
