@@ -253,33 +253,51 @@ def create_net_revenue_heatmap_stacked(fig, country_data, countries_sorted):
     ax_uncertainty = fig.add_subplot(gs[1, 0])
 
     # ========================================================================
-    # Panel A: Net Export Revenue (% GDP) Values (White to Green, continuous scale)
+    # Panel A: Net Export Revenue (% GDP) Values (diverging scale for negatives)
     # ========================================================================
-    # Use fixed scale 0-100% for consistent comparison across all scenarios
-    vmax_values = 100.0
+    # Use diverging scale: red for negative, white for zero, green for positive
+    # Scale based on actual data range to maximise colour resolution
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+    data_min = np.nanmin(matrix_mid)
     data_max = np.nanmax(matrix_mid)
-    print(f"    Debug: Panel A - Data max = {data_max:.2f}%, Using vmax = {vmax_values:.0f}%")
+    vmin_values = min(-15.0, np.floor(data_min / 5) * 5)  # round down to nearest 5
+    vmax_values = max(35.0, np.ceil(data_max / 5) * 5)    # round up to nearest 5
+    print(f"    Debug: Panel A - Data range = {data_min:.2f}% to {data_max:.2f}%, "
+          f"Using vmin={vmin_values:.0f}% vmax={vmax_values:.0f}%")
 
-    # Create custom white-to-green colormap (pure white at 0, dark green at max)
-    from matplotlib.colors import LinearSegmentedColormap
-    colors_values = ['#FFFFFF', '#d9f0d3', '#a6dba0', '#5aae61', '#1b7837', '#00441b']
-    cmap_values = LinearSegmentedColormap.from_list('WhiteGreen', colors_values, N=256)
+    # Diverging colormap: red (negative) → white (zero) → green (positive)
+    colors_neg = ['#a50026', '#f46d43', '#fdae61', '#fee08b', '#FFFFFF']
+    colors_pos = ['#FFFFFF', '#d9f0d3', '#a6dba0', '#5aae61', '#1b7837', '#00441b']
+    n_neg = int(256 * abs(vmin_values) / (abs(vmin_values) + vmax_values))
+    n_pos = 256 - n_neg
+    cmap_neg = LinearSegmentedColormap.from_list('RedWhite', colors_neg, N=n_neg)
+    cmap_pos = LinearSegmentedColormap.from_list('WhiteGreen', colors_pos, N=n_pos)
+    import numpy as np_inner
+    combined_colors = np.vstack([
+        cmap_neg(np.linspace(0, 1, n_neg)),
+        cmap_pos(np.linspace(0, 1, n_pos))
+    ])
+    cmap_values = LinearSegmentedColormap.from_list('DivGreen', combined_colors, N=256)
+    norm_values = TwoSlopeNorm(vmin=vmin_values, vcenter=0, vmax=vmax_values)
 
     im_values = ax_values.imshow(matrix_mid, cmap=cmap_values,
-                                  vmin=0, vmax=vmax_values, aspect='auto')
+                                  norm=norm_values, aspect='auto')
 
     # Add cell annotations for values
     for i in range(n_countries):
         for j in range(n_scenarios):
             mid_val = matrix_mid[i, j]
-            # Adjust text color based on background
-            text_color = 'white' if mid_val > vmax_values * 0.5 else 'black'
-            weight = 'bold' if mid_val > 15.0 else 'normal'  # Bold for >15% GDP share
+            # Adjust text color: white on dark backgrounds, black on light
+            if mid_val > vmax_values * 0.6 or mid_val < vmin_values * 0.6:
+                text_color = 'white'
+            else:
+                text_color = 'black'
+            weight = 'bold' if abs(mid_val) > 15.0 else 'normal'
 
             # Handle NaN/inf values
             if np.isnan(mid_val) or np.isinf(mid_val):
                 text = '-'
-            elif mid_val < 0.1:
+            elif abs(mid_val) < 0.1:
                 text = '0'
             else:
                 text = f'{mid_val:.1f}'
@@ -374,8 +392,9 @@ def create_net_revenue_heatmap_stacked(fig, country_data, countries_sorted):
     cbar_values = fig.colorbar(im_values, cax=cax_values)
     cbar_values.set_label('Net Export Revenue\n(% of GDP)', fontsize=10, rotation=270, labelpad=25)
     cbar_values.ax.tick_params(labelsize=9)
-    cbar_values.set_ticks([0, 25, 50, 75, 100])
-    cbar_values.set_ticklabels(['0', '25', '50', '75', '100'])
+    tick_vals = [vmin_values, 0, vmax_values * 0.25, vmax_values * 0.5, vmax_values * 0.75, vmax_values]
+    cbar_values.set_ticks(tick_vals)
+    cbar_values.set_ticklabels([f'{v:.0f}' for v in tick_vals])
 
     # Colorbar for Panel B (Uncertainty)
     divider_uncertainty = make_axes_locatable(ax_uncertainty)
