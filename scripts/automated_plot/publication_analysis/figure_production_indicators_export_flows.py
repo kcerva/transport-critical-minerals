@@ -695,8 +695,8 @@ def create_comprehensive_legend(fig, ax_metal, ax_country_extraction, ax_country
                                    title='Scenarios',
                                    bbox_to_anchor=(1.02, 1),
                                    loc='upper left',
-                                   fontsize=8,
-                                   title_fontsize=9,
+                                   fontsize=10,
+                                   title_fontsize=11,
                                    framealpha=0.98,
                                    edgecolor='black',
                                    ncol=1)
@@ -708,8 +708,8 @@ def create_comprehensive_legend(fig, ax_metal, ax_country_extraction, ax_country
         title='Countries\n(Extraction)',
         bbox_to_anchor=(1.02, 1),
         loc='upper left',
-        fontsize=7,
-        title_fontsize=8,
+        fontsize=9,
+        title_fontsize=10,
         framealpha=0.98,
         edgecolor='black',
         ncol=1
@@ -722,8 +722,8 @@ def create_comprehensive_legend(fig, ax_metal, ax_country_extraction, ax_country
         title='Countries\n(Processing)',
         bbox_to_anchor=(1.02, 1),
         loc='upper left',
-        fontsize=7,
-        title_fontsize=8,
+        fontsize=9,
+        title_fontsize=10,
         framealpha=0.98,
         edgecolor='black',
         ncol=1
@@ -735,8 +735,8 @@ def create_comprehensive_legend(fig, ax_metal, ax_country_extraction, ax_country
                                         title='Minerals',
                                         bbox_to_anchor=(1.02, 1),
                                         loc='upper left',
-                                        fontsize=8,
-                                        title_fontsize=9,
+                                        fontsize=10,
+                                        title_fontsize=11,
                                         framealpha=0.98,
                                         edgecolor='black',
                                         ncol=1)
@@ -746,8 +746,8 @@ def create_comprehensive_legend(fig, ax_metal, ax_country_extraction, ax_country
                                          title='Constraint &\nUncertainty',
                                          bbox_to_anchor=(1.02, 0.50),
                                          loc='upper left',
-                                         fontsize=8,
-                                         title_fontsize=9,
+                                         fontsize=10,
+                                         title_fontsize=11,
                                          framealpha=0.98,
                                          edgecolor='black')
     ax_mineral.add_artist(legend_constraint)
@@ -757,8 +757,8 @@ def create_comprehensive_legend(fig, ax_metal, ax_country_extraction, ax_country
                                             title='Processing Types',
                                             bbox_to_anchor=(1.02, 1),
                                             loc='upper left',
-                                            fontsize=8,
-                                            title_fontsize=9,
+                                            fontsize=10,
+                                            title_fontsize=11,
                                             framealpha=0.98,
                                             edgecolor='black')
 

@@ -299,9 +299,9 @@ def generate_environmental_indicators_figures(df, output_dir):
      top_emissions_countries, top_water_countries, country_colormap) = prepare_environmental_data(df)
 
     # Create figure with 6 panels (2 columns × 3 rows)
-    # Wider figure to accommodate legends without cropping
-    fig, axes = plt.subplots(3, 2, figsize=(16, 11.5))
-    fig.subplots_adjust(hspace=0.35, wspace=0.96, right=0.52, top=0.98, bottom=0.06)
+    # Match layout from other publication figures (e.g., infrastructure_indicators)
+    fig, axes = plt.subplots(3, 2, figsize=(16, 10))
+    fig.subplots_adjust(hspace=0.55, wspace=0.95, right=0.52, top=0.90, bottom=0.06)
 
     # Unpack axes
     ax_emissions_mineral = axes[0, 0]
@@ -375,8 +375,9 @@ def generate_environmental_indicators_figures(df, output_dir):
     for ax in axes.flat:
         ax.set_yticklabels(y_labels, fontsize=10)
 
-    # Create legends positioned outside plot area
-    # Mineral legend (for row 1)
+    # Create legends next to each subplot (matching infrastructure_indicators style)
+
+    # Row 1: Minerals legend (shared) - place next to panel B
     mineral_patches = []
     for mineral in MINERAL_ORDER:
         color = reference_mineral_colormap.get(mineral, '#999999')
@@ -388,53 +389,55 @@ def generate_environmental_indicators_figures(df, output_dir):
                                               title='Minerals',
                                               bbox_to_anchor=(1.02, 1),
                                               loc='upper left',
-                                              fontsize=9,
-                                              title_fontsize=10,
+                                              fontsize=8,
+                                              title_fontsize=9,
                                               framealpha=0.98,
                                               edgecolor='black')
 
-    # Country legends (for row 2) - single box with multiple columns
-    # Emissions countries
+    # Row 2: Country legends next to each panel
     emissions_country_patches = []
-    for country in (top_emissions_countries + ['Other']):
-        color = country_colors_emissions[country]
+    for country in top_emissions_countries:
+        color = country_colormap.get(country, '#999999')
         patch = mpatches.Patch(facecolor=color, label=country, edgecolor='black', linewidth=0.8)
         emissions_country_patches.append(patch)
+    emissions_country_patches.append(
+        mpatches.Patch(facecolor='#999999', label='Other', edgecolor='black', linewidth=0.8)
+    )
 
     legend_emissions_countries = ax_emissions_country.legend(
         handles=emissions_country_patches,
-        title='Countries (Emissions)',
+        title='Countries',
         bbox_to_anchor=(1.02, 1),
         loc='upper left',
-        fontsize=8,
-        title_fontsize=9,
+        fontsize=7,
+        title_fontsize=8,
         framealpha=0.98,
-        edgecolor='black',
-        ncol=1  # Single column to keep it compact
+        edgecolor='black'
     )
     ax_emissions_country.add_artist(legend_emissions_countries)
 
-    # Water countries
     water_country_patches = []
-    for country in (top_water_countries + ['Other']):
-        color = country_colors_water[country]
+    for country in top_water_countries:
+        color = country_colormap.get(country, '#999999')
         patch = mpatches.Patch(facecolor=color, label=country, edgecolor='black', linewidth=0.8)
         water_country_patches.append(patch)
+    water_country_patches.append(
+        mpatches.Patch(facecolor='#999999', label='Other', edgecolor='black', linewidth=0.8)
+    )
 
     legend_water_countries = ax_water_country.legend(
         handles=water_country_patches,
-        title='Countries (Water)',
-        bbox_to_anchor=(1.02, 0.55),  # Moved up to avoid overlap with Panel F title
+        title='Countries',
+        bbox_to_anchor=(1.02, 1),
         loc='upper left',
-        fontsize=8,
-        title_fontsize=9,
+        fontsize=7,
+        title_fontsize=8,
         framealpha=0.98,
-        edgecolor='black',
-        ncol=1  # Single column to keep it compact
+        edgecolor='black'
     )
     ax_water_country.add_artist(legend_water_countries)
 
-    # Emission source legend
+    # Row 3: Source and Processing legends
     source_patches = []
     for source in EMISSION_SOURCE_ORDER:
         color = EMISSION_SOURCE_COLORS[source]
@@ -445,12 +448,11 @@ def generate_environmental_indicators_figures(df, output_dir):
                                                 title='Emission\nSources',
                                                 bbox_to_anchor=(1.02, 1),
                                                 loc='upper left',
-                                                fontsize=9,
-                                                title_fontsize=10,
+                                                fontsize=8,
+                                                title_fontsize=9,
                                                 framealpha=0.98,
                                                 edgecolor='black')
 
-    # Processing type legend
     processing_patches = []
     for ptype in PROCESSING_ORDER:
         color = PROCESSING_TYPE_COLORS[ptype]
@@ -466,28 +468,24 @@ def generate_environmental_indicators_figures(df, output_dir):
                                                    framealpha=0.98,
                                                    edgecolor='black')
 
-    # Constraint & Uncertainty legend
+    # Constraint legend - place next to panel B (below minerals legend)
     constraint_patches = [
-        mpatches.Patch(facecolor='white', hatch='////', edgecolor='black',
-                      label='Constrained'),
-        mpatches.Patch(facecolor='white', edgecolor='black',
-                      label='Unconstrained')
+        mpatches.Patch(facecolor='white', hatch='////', edgecolor='black', label='Constrained'),
+        mpatches.Patch(facecolor='white', edgecolor='black', label='Unconstrained'),
+        mpatches.Patch(facecolor='none', edgecolor='none', label='Error bars: Low-High')
     ]
-    error_patch = mpatches.Patch(facecolor='none', edgecolor='none',
-                                 label='Error bars: Low-High demand')
 
-    legend_constraint = ax_water_country.legend(handles=constraint_patches + [error_patch],
-                                                title='Constraint &\nUncertainty',
-                                                bbox_to_anchor=(1.02, 1),
+    legend_constraint = ax_water_mineral.legend(handles=constraint_patches,
+                                                title='Constraint',
+                                                bbox_to_anchor=(1.02, 0.35),
                                                 loc='upper left',
-                                                fontsize=9,
-                                                title_fontsize=10,
+                                                fontsize=8,
+                                                title_fontsize=9,
                                                 framealpha=0.98,
                                                 edgecolor='black')
 
-    # Keep legends
+    # Keep all legends
     ax_water_mineral.add_artist(legend_minerals)
-    ax_water_country.add_artist(legend_constraint)
     ax_emissions_source.add_artist(legend_sources)
     ax_water_processing.add_artist(legend_processing)
 
