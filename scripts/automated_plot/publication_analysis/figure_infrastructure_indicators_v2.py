@@ -52,24 +52,79 @@ ENERGY_COST_COLORS = {
     'Opex': '#6baed6'  # Light blue
 }
 
-# Electricity capacity change data (from electricity_demand_changes.py)
-# Percentage change relative to baseline for Precursor scenarios (unconstrained)
-ELECTRICITY_CAPACITY_CHANGE = {
-    "AGO": {"Prec_U_R": 3, "Prec_U_N": 0},    # Angola
-    "BDI": {"Prec_U_R": 15, "Prec_U_N": 0},   # Burundi
-    "BWA": {"Prec_U_R": 2, "Prec_U_N": 0},    # Botswana
-    "COD": {"Prec_U_R": 35, "Prec_U_N": 31},  # DR of Congo
-    "KEN": {"Prec_U_R": 0, "Prec_U_N": 0},    # Kenya
-    "MDG": {"Prec_U_R": 6, "Prec_U_N": 0},    # Madagascar
-    "MOZ": {"Prec_U_R": 4, "Prec_U_N": 1},    # Mozambique
-    "MWI": {"Prec_U_R": 7, "Prec_U_N": 5},    # Malawi
-    "NAM": {"Prec_U_R": 35, "Prec_U_N": 6},   # Namibia
-    "TZA": {"Prec_U_R": 20, "Prec_U_N": 5},   # Tanzania
-    "UGA": {"Prec_U_R": 0, "Prec_U_N": 0},    # Uganda
-    "ZAF": {"Prec_U_R": 1, "Prec_U_N": 0},    # South Africa
-    "ZMB": {"Prec_U_R": 5, "Prec_U_N": 2},    # Zambia
-    "ZWE": {"Prec_U_R": 2, "Prec_U_N": 1}     # Zimbabwe
+# OLD Electricity capacity change data (from electricity_demand_changes.py, pre-Jan 2026)
+# Kept for reference - these were percentage change relative to baseline for Precursor scenarios (unconstrained)
+# ELECTRICITY_CAPACITY_CHANGE_OLD = {
+#     "AGO": {"Prec_U_R": 3, "Prec_U_N": 0},    # Angola
+#     "BDI": {"Prec_U_R": 15, "Prec_U_N": 0},   # Burundi
+#     "BWA": {"Prec_U_R": 2, "Prec_U_N": 0},    # Botswana
+#     "COD": {"Prec_U_R": 35, "Prec_U_N": 31},  # DR of Congo
+#     "KEN": {"Prec_U_R": 0, "Prec_U_N": 0},    # Kenya
+#     "MDG": {"Prec_U_R": 6, "Prec_U_N": 0},    # Madagascar
+#     "MOZ": {"Prec_U_R": 4, "Prec_U_N": 1},    # Mozambique
+#     "MWI": {"Prec_U_R": 7, "Prec_U_N": 5},    # Malawi
+#     "NAM": {"Prec_U_R": 35, "Prec_U_N": 6},   # Namibia
+#     "TZA": {"Prec_U_R": 20, "Prec_U_N": 5},   # Tanzania
+#     "UGA": {"Prec_U_R": 0, "Prec_U_N": 0},    # Uganda
+#     "ZAF": {"Prec_U_R": 1, "Prec_U_N": 0},    # South Africa
+#     "ZMB": {"Prec_U_R": 5, "Prec_U_N": 2},    # Zambia
+#     "ZWE": {"Prec_U_R": 2, "Prec_U_N": 1}     # Zimbabwe
+# }
+
+# Country name to ISO3 mapping
+COUNTRY_NAME_TO_ISO3 = {
+    "Angola": "AGO",
+    "Burundi": "BDI",
+    "Botswana": "BWA",
+    "DR of Congo": "COD",
+    "Kenya": "KEN",
+    "Madagascar": "MDG",
+    "Malawi": "MWI",
+    "Mozambique": "MOZ",
+    "Namibia": "NAM",
+    "Tanzania": "TZA",
+    "Uganda": "UGA",
+    "South Africa": "ZAF",
+    "Zambia": "ZMB",
+    "Zimbabwe": "ZWE"
 }
+
+# Electricity demand data file path
+ELECTRICITY_DEMAND_FILE = "260219 CM Demand by country by scenario.xlsx"
+
+def load_electricity_demand_data(config):
+    """
+    Load electricity demand data from Excel file (Jan 2026 data).
+
+    Args:
+        config: Configuration dictionary with paths
+
+    Returns:
+        dict: Country ISO3 -> scenario values mapping
+    """
+    # Load from data folder
+    file_path = os.path.join(config['paths']['data'], ELECTRICITY_DEMAND_FILE)
+
+    if not os.path.exists(file_path):
+        print(f"Warning: Electricity demand file not found: {file_path}")
+        return None
+
+    df = pd.read_excel(file_path)
+
+    # Convert to dictionary format
+    electricity_data = {}
+    for _, row in df.iterrows():
+        country_name = row['Country'].strip()  # Strip whitespace from country names
+        if country_name in COUNTRY_NAME_TO_ISO3:
+            iso3 = COUNTRY_NAME_TO_ISO3[country_name]
+            electricity_data[iso3] = {
+                'Nat_ER': row['National Early Refining 2040'],
+                'Nat_Prec': row['National Precursor 2040'],
+                'Reg_ER': row['Regional Early Refining 2040'],
+                'Reg_Prec': row['Regional Precursor 2040']
+            }
+
+    return electricity_data
 
 
 def get_top_countries(df, metric_col, n=8):
@@ -280,38 +335,41 @@ def plot_stacked_panel(ax, data, stack_order, colors, title, xlabel):
     return y_positions
 
 
-def plot_electricity_capacity_change_panel(ax):
+def plot_electricity_capacity_change_panel(ax, electricity_data):
     """
     Plot Panel E: Electricity capacity change by country (Precursor scenarios only)
     Uses grouped horizontal bars sorted by Regional Precursor value (descending)
 
     Args:
         ax: Matplotlib axis
+        electricity_data: Dictionary with country ISO3 -> scenario values
     """
     # Prepare data and sort by Regional Precursor value
-    countries = list(ELECTRICITY_CAPACITY_CHANGE.keys())
-    regional_values = [ELECTRICITY_CAPACITY_CHANGE[c]["Prec_U_R"] for c in countries]
-    national_values = [ELECTRICITY_CAPACITY_CHANGE[c]["Prec_U_N"] for c in countries]
+    # Only use Precursor scenarios to match other publication panels
+    countries = list(electricity_data.keys())
+    reg_prec_values = [electricity_data[c]["Reg_Prec"] for c in countries]
+    nat_prec_values = [electricity_data[c]["Nat_Prec"] for c in countries]
 
-    # Sort by regional value (descending)
-    sorted_indices = np.argsort(regional_values)[::-1]
+    # Sort by Regional Precursor value (descending)
+    sorted_indices = np.argsort(reg_prec_values)[::-1]
     countries_sorted = [countries[i] for i in sorted_indices]
-    regional_sorted = [regional_values[i] for i in sorted_indices]
-    national_sorted = [national_values[i] for i in sorted_indices]
+    reg_prec_sorted = [reg_prec_values[i] for i in sorted_indices]
+    nat_prec_sorted = [nat_prec_values[i] for i in sorted_indices]
 
-    # Create grouped horizontal bars
+    # Create grouped horizontal bars (2 bars per country)
     n_countries = len(countries_sorted)
     y_positions = np.arange(n_countries)
     bar_height = 0.35
 
-    # Colors for the two scenarios
+    # Colors for the two Precursor scenarios (matching other panels)
     color_regional = '#2b8cbe'  # Blue for Regional
     color_national = '#f46d43'  # Orange for National
 
-    # Plot bars
-    ax.barh(y_positions - bar_height/2, regional_sorted, bar_height,
+    # Plot bars (Regional on top, National below)
+    # Labels match naming convention in other panels
+    ax.barh(y_positions - bar_height/2, reg_prec_sorted, bar_height,
             label='Prec_U_R', color=color_regional, edgecolor='black', linewidth=0.8)
-    ax.barh(y_positions + bar_height/2, national_sorted, bar_height,
+    ax.barh(y_positions + bar_height/2, nat_prec_sorted, bar_height,
             label='Prec_U_N', color=color_national, edgecolor='black', linewidth=0.8)
 
     # Formatting
@@ -338,18 +396,28 @@ def plot_electricity_capacity_change_panel(ax):
     return legend_capacity
 
 
-def generate_infrastructure_indicators_v2_figures(df, output_dir):
+def generate_infrastructure_indicators_v2_figures(df, output_dir, config=None):
     """
     Main entry point for generating infrastructure indicators V2 figure
 
     Args:
         df: Main data DataFrame
         output_dir: Output directory
+        config: Configuration dictionary with paths (required for electricity demand data)
 
     Returns:
         List of saved file paths
     """
     print("  Generating infrastructure indicators V2 6-panel figure...")
+
+    # Load electricity demand data for Panel E
+    electricity_data = None
+    if config is not None:
+        electricity_data = load_electricity_demand_data(config)
+        if electricity_data:
+            print("    Loaded electricity demand data from external file")
+        else:
+            print("    Warning: Could not load electricity demand data")
 
     # Apply publication style
     plt.style.use('default')
@@ -405,8 +473,15 @@ def generate_infrastructure_indicators_v2_figures(df, output_dir):
     )
 
     # NEW Panel E: Electricity capacity change
-    legend_capacity_change = plot_electricity_capacity_change_panel(ax_energy_country)
-    ax_energy_country.add_artist(legend_capacity_change)
+    if electricity_data is not None:
+        legend_capacity_change = plot_electricity_capacity_change_panel(ax_energy_country, electricity_data)
+        ax_energy_country.add_artist(legend_capacity_change)
+    else:
+        ax_energy_country.text(0.5, 0.5, 'Electricity data not available',
+                               transform=ax_energy_country.transAxes,
+                               ha='center', va='center', fontsize=12)
+        ax_energy_country.set_title('E) Electricity Capacity Change by Country', fontsize=12, fontweight='bold', pad=10)
+        legend_capacity_change = None
 
     # Row 3: Costs
     plot_stacked_panel(
@@ -503,9 +578,27 @@ def generate_infrastructure_indicators_v2_figures(df, output_dir):
                                                  framealpha=0.98,
                                                  edgecolor='black')
 
+    # Mineral legend for Panel F (Transport Costs)
+    mineral_patches_f = []
+    for mineral in MINERAL_ORDER:
+        color = reference_mineral_colormap.get(mineral, '#999999')
+        label = mineral.capitalize()
+        patch = mpatches.Patch(facecolor=color, label=label, edgecolor='black', linewidth=0.8)
+        mineral_patches_f.append(patch)
+
+    legend_minerals_f = ax_transport_cost.legend(handles=mineral_patches_f,
+                                                  title='Minerals',
+                                                  bbox_to_anchor=(1.02, 1),
+                                                  loc='upper left',
+                                                  fontsize=8,
+                                                  title_fontsize=9,
+                                                  framealpha=0.98,
+                                                  edgecolor='black')
+
     # Keep legends
     ax_energy_mineral.add_artist(legend_minerals)
     ax_energy_mineral.add_artist(legend_constraint)
+    ax_transport_cost.add_artist(legend_minerals_f)
     ax_energy_cost.add_artist(legend_energy)
 
     # Ensure consistent x-axis for cost panels (E and F)
@@ -526,12 +619,15 @@ def generate_infrastructure_indicators_v2_figures(df, output_dir):
 
     # Save figure
     # Collect all legend artists to ensure they're included in bbox calculation
+    # Filter out None values (e.g., if electricity data was not available)
     all_artists = [
         legend_minerals,
         legend_constraint,
         legend_transport_countries,
         legend_capacity_change,
-        legend_energy
+        legend_minerals_f,
+        legend_energy]
+    all_artists = [a for a in all_artists if a is not None
     ]
 
     saved_paths = []
@@ -578,7 +674,7 @@ if __name__ == '__main__':
 
     # Generate figure
     print("Testing infrastructure indicators V2 figure generation...")
-    paths = generate_infrastructure_indicators_v2_figures(df, output_dir)
+    paths = generate_infrastructure_indicators_v2_figures(df, output_dir, config)
     print(f"\nGenerated {len(paths)} files:")
     for path in paths:
         print(f"  - {path}")
