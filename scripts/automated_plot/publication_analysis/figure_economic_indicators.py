@@ -321,6 +321,141 @@ def prepare_country_gdp_data(df):
     return country_gdp_data
 
 
+# Processing stage to processing type mapping
+STAGE_TO_PROCESSING_TYPE = {
+    1.0: 'Beneficiation',
+    2.0: 'Early refining',
+    3.0: 'Early refining',
+    3.1: 'Early refining',
+    4.0: 'Precursor related product',
+    4.1: 'Precursor related product',
+    4.2: 'Precursor related product',
+    4.3: 'Precursor related product',
+    5.0: 'Precursor related product',
+}
+
+
+def prepare_net_export_revenue_data(df):
+    """
+    Prepare NET export revenue data by mineral and processing type for Panels A & B
+
+    Uses net export revenue (export revenue - import cost) from tonnage_flows_with_revenues.xlsx
+    instead of gross export revenue from all_data.xlsx
+
+    Returns:
+        tuple: (net_revenue_by_mineral_data, net_revenue_by_processing_data)
+            net_revenue_by_mineral_data: Dict[scenario_label][demand][mineral] = net_revenue
+            net_revenue_by_processing_data: Dict[scenario_label][demand][processing_type] = net_revenue
+    """
+    import json
+    from pathlib import Path
+
+    # Load config to get paths
+    config_path = Path(__file__).parent.parent.parent.parent / 'config.json'
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    results_path = Path(config['paths']['results'])
+    flows_path = results_path / 'tonnage_flows_with_revenues.xlsx'
+
+    # Load tonnage flows data
+    df_flows = pd.read_excel(flows_path, sheet_name='All_Flows')
+
+    net_revenue_by_mineral_data = {}
+    net_revenue_by_processing_data = {}
+
+    for goal, policy, constraint, label in SCENARIO_CONFIG:
+        net_revenue_by_mineral_data[label] = {'low': {}, 'mid': {}, 'high': {}}
+        net_revenue_by_processing_data[label] = {'low': {}, 'mid': {}, 'high': {}}
+
+        # Handle baseline scenario (no demand variants)
+        if goal == 'baseline':
+            scenario_name = '2022_baseline'
+            constraint_col = 'country_unconstrained'
+
+            # Filter for baseline
+            df_scenario = df_flows[
+                (df_flows['scenario'] == scenario_name) &
+                (df_flows['constraint'] == constraint_col)
+            ].copy()
+
+            if df_scenario.empty:
+                print(f"Warning: No flows data for {label}")
+                continue
+
+            # Calculate net export revenue
+            # Exports: use export_revenue_usd
+            exports = df_scenario[df_scenario['trade_type'] == 'Export'].copy()
+            # Imports: use import_cost_at_price_usd
+            imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].copy()
+
+            # By mineral
+            export_by_mineral = exports.groupby('reference_mineral')['export_revenue_usd'].sum()
+            import_by_mineral = imports.groupby('reference_mineral')['import_cost_at_price_usd'].sum()
+
+            for demand in ['low', 'mid', 'high']:
+                for mineral in MINERAL_ORDER:
+                    export_rev = export_by_mineral.get(mineral, 0)
+                    import_cost = import_by_mineral.get(mineral, 0)
+                    net_revenue_by_mineral_data[label][demand][mineral] = export_rev - import_cost
+
+            # By processing type - use final_processing_stage for exports
+            exports['processing_type'] = exports['final_processing_stage'].map(STAGE_TO_PROCESSING_TYPE)
+            export_by_ptype = exports.groupby('processing_type')['export_revenue_usd'].sum()
+
+            # For imports, use initial_processing_stage
+            imports['processing_type'] = imports['initial_processing_stage'].map(STAGE_TO_PROCESSING_TYPE)
+            import_by_ptype = imports.groupby('processing_type')['import_cost_at_price_usd'].sum()
+
+            for demand in ['low', 'mid', 'high']:
+                for ptype in PROCESSING_ORDER:
+                    export_rev = export_by_ptype.get(ptype, 0)
+                    import_cost = import_by_ptype.get(ptype, 0)
+                    net_revenue_by_processing_data[label][demand][ptype] = export_rev - import_cost
+
+        else:
+            # Handle BAU and Precursor scenarios with demand variants
+            for demand in ['low', 'mid', 'high']:
+                scenario_name = f'{goal}_2040_{demand}_{policy}_threshold_metal_tons'
+                constraint_col = f'country_{constraint}' if policy == 'min' else f'region_{constraint}'
+
+                df_scenario = df_flows[
+                    (df_flows['scenario'] == scenario_name) &
+                    (df_flows['constraint'] == constraint_col)
+                ].copy()
+
+                if df_scenario.empty:
+                    print(f"Warning: No flows data for {label} {demand} demand")
+                    continue
+
+                # Calculate net export revenue
+                exports = df_scenario[df_scenario['trade_type'] == 'Export'].copy()
+                imports = df_scenario[df_scenario['trade_type'].str.contains('Import', na=False)].copy()
+
+                # By mineral
+                export_by_mineral = exports.groupby('reference_mineral')['export_revenue_usd'].sum()
+                import_by_mineral = imports.groupby('reference_mineral')['import_cost_at_price_usd'].sum()
+
+                for mineral in MINERAL_ORDER:
+                    export_rev = export_by_mineral.get(mineral, 0)
+                    import_cost = import_by_mineral.get(mineral, 0)
+                    net_revenue_by_mineral_data[label][demand][mineral] = export_rev - import_cost
+
+                # By processing type
+                exports['processing_type'] = exports['final_processing_stage'].map(STAGE_TO_PROCESSING_TYPE)
+                export_by_ptype = exports.groupby('processing_type')['export_revenue_usd'].sum()
+
+                imports['processing_type'] = imports['initial_processing_stage'].map(STAGE_TO_PROCESSING_TYPE)
+                import_by_ptype = imports.groupby('processing_type')['import_cost_at_price_usd'].sum()
+
+                for ptype in PROCESSING_ORDER:
+                    export_rev = export_by_ptype.get(ptype, 0)
+                    import_cost = import_by_ptype.get(ptype, 0)
+                    net_revenue_by_processing_data[label][demand][ptype] = export_rev - import_cost
+
+    return net_revenue_by_mineral_data, net_revenue_by_processing_data
+
+
 def prepare_country_net_export_revenue_gdp_data(df):
     """
     Prepare country-level NET export revenue GDP share data for heatmap visualization
@@ -335,7 +470,7 @@ def prepare_country_net_export_revenue_gdp_data(df):
     from pathlib import Path
 
     # Load config to get paths
-    config_path = Path(__file__).parent.parent.parent / 'config.json'
+    config_path = Path(__file__).parent.parent.parent.parent / 'config.json'
     with open(config_path, 'r') as f:
         config = json.load(f)
 
@@ -987,7 +1122,7 @@ def plot_competitiveness_panel(ax, df):
             linewidths=0.5,
             linecolor='gray',
             square=False,
-            annot_kws={'fontsize': 11, 'va': 'center'},
+            annot_kws={'fontsize': 8, 'va': 'center'},
             cbar=show_cbar,
             mask=quintile_matrix.isna()
         )
@@ -1000,9 +1135,12 @@ def plot_competitiveness_panel(ax, df):
         else:
             ax_sub.set_ylabel('')
 
-        ax_sub.set_yticklabels(ax_sub.get_yticklabels(), rotation=0, fontsize=11)
-        ax_sub.set_xticklabels([m.capitalize() for m in COMP_MINERAL_ORDER],
-                               rotation=0, ha='center', fontsize=11)
+        ax_sub.set_yticklabels(ax_sub.get_yticklabels(), rotation=0, fontsize=9)
+        # Use abbreviated mineral names to avoid overlap
+        mineral_abbrev = {'copper': 'Cu', 'cobalt': 'Co', 'nickel': 'Ni',
+                          'manganese': 'Mn', 'lithium': 'Li', 'graphite': 'Gr'}
+        ax_sub.set_xticklabels([mineral_abbrev.get(m, m[:2]) for m in COMP_MINERAL_ORDER],
+                               rotation=0, ha='center', fontsize=9)
 
     # Add Panel F label above the heatmaps using figure coordinates
     # Position it at the top-left of the Panel F area with sufficient clearance
@@ -1172,10 +1310,12 @@ def create_economic_indicators_figure(df, output_dir):
 
 def create_economic_indicators_figure_net_revenue(df, output_dir):
     """
-    Generate economic indicators comparison figure with NET export revenue for Panel C
+    Generate economic indicators comparison figure with NET export revenue
 
-    Same as create_economic_indicators_figure() but Panel C uses net export revenue
-    (export revenue - import cost) instead of gross export revenue
+    Uses net export revenue (export revenue - import cost) for:
+    - Panel A: Net Export Revenue by Mineral
+    - Panel B: Net Export Revenue by Processing Type
+    - Panel C: Net Export Revenue as Share of GDP (heatmap)
 
     Args:
         df: Main data DataFrame
@@ -1191,8 +1331,12 @@ def create_economic_indicators_figure_net_revenue(df, output_dir):
     for key, value in PUBLICATION_STYLE.items():
         plt.rcParams[key] = value
 
-    # Prepare data (same as regular version for panels A, B, D, E, F)
-    revenue_mineral_data, revenue_processing_data, gdp_share_data, cost_mineral_data, cost_breakdown_data = prepare_economic_data(df)
+    # Prepare data - use NET export revenue for Panels A & B
+    # Get gross revenue data for cost panels (D, E) which don't change
+    _, _, gdp_share_data, cost_mineral_data, cost_breakdown_data = prepare_economic_data(df)
+
+    # Get NET export revenue data for Panels A & B
+    net_revenue_mineral_data, net_revenue_processing_data = prepare_net_export_revenue_data(df)
 
     # Prepare country-level NET export revenue GDP data for heatmap (Panel C)
     country_gdp_data = prepare_country_net_export_revenue_gdp_data(df)
@@ -1222,22 +1366,22 @@ def create_economic_indicators_figure_net_revenue(df, output_dir):
     ax_gdp = fig.add_subplot(row3_gs[0, 0])
     ax_competitiveness = fig.add_subplot(row3_gs[0, 1])
 
-    # Plot Top Panel (Revenue by Mineral)
+    # Plot Top Panel (NET Revenue by Mineral) - using net export revenue data
     y_positions = plot_stacked_revenue_panel(
-        ax_rev_mineral, revenue_mineral_data,
+        ax_rev_mineral, net_revenue_mineral_data,
         stack_order=MINERAL_ORDER,
         colors=reference_mineral_colormap,
-        title='A) Export Revenue by Mineral',
-        xlabel='Revenue (Billion USD)'
+        title='A) Net Export Revenue by Mineral',
+        xlabel='Net Revenue (Billion USD)'
     )
 
-    # Plot Middle Panel (Revenue by Processing Type)
+    # Plot Middle Panel (NET Revenue by Processing Type) - using net export revenue data
     plot_stacked_revenue_panel(
-        ax_rev_processing, revenue_processing_data,
+        ax_rev_processing, net_revenue_processing_data,
         stack_order=PROCESSING_ORDER,
         colors=PROCESSING_TYPE_COLORS,
-        title='B) Export Revenue by Processing Type',
-        xlabel='Revenue (Billion USD)'
+        title='B) Net Export Revenue by Processing Type',
+        xlabel='Net Revenue (Billion USD)'
     )
 
     # Plot Panel C (NET Export Revenue GDP Share - HEATMAP showing Regional vs National impact)
