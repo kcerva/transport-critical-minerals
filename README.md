@@ -1,6 +1,6 @@
-# transport-critical-minerals
+# Quantifying Critical Mineral Value Chains Opportunities
 
-Models global transport flows of critical minerals with a focus on African countries. Analyses transport costs, CO₂ emissions, water use, and economic impacts (value addition, net export revenue, GDP share) across policy scenarios combining different processing ambition levels, trade policies, and demand projections.
+This repo models global transport flows of critical minerals, and brings together results from production, energy requirements and environmental implications. The study has first been applied to 14 African countries and 6 battery minerals (cobalt, copper, graphite, nickel, manganese and lithium). The analysis focuses on mineral production and battery commodity manufacturing, transport flows, transport costs, CO₂ emissions, electricity requirements, electricity costs, water use, and economic impacts (export revenues, GDP share) across policy scenarios combining different mineral processing ambition levels, resource nationalist or regionalist policies, and demand projections.
 
 ## Prerequisites
 
@@ -68,7 +68,16 @@ python scripts/automated_plot/merge_prices_with_flows.py        # → tonnage_fl
 | Directory | Description |
 |---|---|
 | `scripts/automated_plot/` | **Our primary work area** — visualisations, pivot tables, reports |
+
 | `scripts/flow_modelling/` | Transport flow modelling and optimisation — run by others |
 | `scripts/preprocess/` | Data preprocessing — run by others |
 
 > `scripts/plot/` contains outdated scripts — use `scripts/automated_plot/` instead.
+
+## Applications
+This repo has been used to create the analysis in the following publications:
+
+Cervantes Barron, K., Pant, R., Andrieu, B., Heydari, M., Korkovelos, A., Osei-Owusu, S., Barzin, S., Ciftci, M.M., Stringer, M., Gomez, C.R., Hawkes, A., Hall, J., Foster, V., 2026. Nationalist versus regional approaches for increased battery mineral value addition in Southern Africa. https://doi.org/10.21203/rs.3.rs-9179870/v1 (Under review in Nature Communications)
+
+Foster, V., Cervantes Barron, K., Pant, R., Andrieu, B., Heydari, M., Osei-Owusu, S., Barzin, S., Ciftci, M., Stringer, M., Gomez, C.R., Verdin, G.C., Hawkes, A., Hall, J.W., 2026. Beyond Extraction: Simulating Increased Battery Mineral Value Addition in Southern Africa - Policy Brief (Policy Brief). Climate Compatible Growth. https://climatecompatiblegrowth.com/wp-content/uploads/Policy-Brief-Battery-Minerals-Southern-Africa_260126.pdf 
+
