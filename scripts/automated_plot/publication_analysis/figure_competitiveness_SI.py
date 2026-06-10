@@ -176,6 +176,9 @@ def generate_competitiveness_matrices_SI(df, output_dir):
         # Extract cumulative costs
         cost_df = extract_cumulative_costs(df, scenario_key, constraint, scenario_config)
 
+        # Remove Angola cobalt — value is unrealistically high and distorts rankings
+        cost_df = cost_df[~((cost_df['iso3'] == 'AGO') & (cost_df['reference_mineral'] == 'cobalt'))]
+
         if cost_df.empty:
             print(f"    Warning: No data for {title}")
             # Create empty matrices with all countries

@@ -187,6 +187,27 @@ def extract_cumulative_costs(df, scenario_key, constraint, scenario_config):
             if not valid_stages:
                 continue
 
+            # Exclude entries where a non-first, non-last intermediate stage has a tiny
+            # but nonzero production volume (0 < prod < 1% of target). This creates an
+            # artificially high per-tonne cost for that stage (large import costs divided
+            # by near-zero domestic throughput) that dominates the cumulative cost and
+            # misrepresents the country's competitive position.
+            # Zero-production intermediate stages are retained — their unit costs are small.
+            first_stage = min(valid_stages)
+            last_stage = max(valid_stages)
+            intermediate_stages = [s for s in valid_stages if s != first_stage and s != last_stage]
+            skip_entry = False
+            for stage_num in intermediate_stages:
+                stage_data = country_data[country_data["processing_stage"] == stage_num]
+                if stage_data.empty:
+                    continue
+                stage_prod = stage_data["production_tonnes_for_costs"].iloc[0]
+                if 0 < stage_prod < 0.01 * target_production:
+                    skip_entry = True
+                    break
+            if skip_entry:
+                continue
+
             # Calculate cumulative costs from valid stages only
             cumulative_unit_cost = 0
             for stage_num in valid_stages:

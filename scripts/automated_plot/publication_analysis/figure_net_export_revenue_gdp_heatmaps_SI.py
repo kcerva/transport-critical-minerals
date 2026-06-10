@@ -255,8 +255,6 @@ def create_net_revenue_heatmap_stacked(fig, country_data, countries_sorted):
     # ========================================================================
     # Panel A: Net Export Revenue (% GDP) Values (diverging scale for negatives)
     # ========================================================================
-    # Use diverging scale: red for negative, white for zero, green for positive
-    # Scale based on actual data range to maximise colour resolution
     from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
     data_min = np.nanmin(matrix_mid)
     data_max = np.nanmax(matrix_mid)
@@ -272,7 +270,6 @@ def create_net_revenue_heatmap_stacked(fig, country_data, countries_sorted):
     n_pos = 256 - n_neg
     cmap_neg = LinearSegmentedColormap.from_list('RedWhite', colors_neg, N=n_neg)
     cmap_pos = LinearSegmentedColormap.from_list('WhiteGreen', colors_pos, N=n_pos)
-    import numpy as np_inner
     combined_colors = np.vstack([
         cmap_neg(np.linspace(0, 1, n_neg)),
         cmap_pos(np.linspace(0, 1, n_pos))
@@ -287,7 +284,7 @@ def create_net_revenue_heatmap_stacked(fig, country_data, countries_sorted):
     for i in range(n_countries):
         for j in range(n_scenarios):
             mid_val = matrix_mid[i, j]
-            # Adjust text color: white on dark backgrounds, black on light
+            # White text on dark (strongly positive or negative) backgrounds
             if mid_val > vmax_values * 0.6 or mid_val < vmin_values * 0.6:
                 text_color = 'white'
             else:

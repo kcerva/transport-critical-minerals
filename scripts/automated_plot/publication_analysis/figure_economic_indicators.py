@@ -91,6 +91,9 @@ COST_TYPE_COLORS = {
     'Energy': '#984ea3'          # Purple
 }
 
+# Operational cost type order (energy + transport only, no production)
+OPERATIONAL_COST_TYPE_ORDER = ['Transport', 'Energy']
+
 # GDP inflation adjustment factors
 GDP_INFLATION_FACTORS = {
     '2022': 1.0,
@@ -323,6 +326,7 @@ def prepare_country_gdp_data(df):
 
 # Processing stage to processing type mapping
 STAGE_TO_PROCESSING_TYPE = {
+    0.0: 'Beneficiation',
     1.0: 'Beneficiation',
     2.0: 'Early refining',
     3.0: 'Early refining',
@@ -932,7 +936,7 @@ def plot_gdp_share_panel(ax, data, title, xlabel='Revenue as % of GDP'):
     return y_positions
 
 
-def create_comprehensive_legend(fig, ax_revenue_mineral, ax_revenue_processing, ax_gdp_share, ax_cost_mineral, ax_cost_breakdown):
+def create_comprehensive_legend(fig, ax_revenue_mineral, ax_revenue_processing, ax_gdp_share, ax_cost_mineral, ax_cost_breakdown, cost_type_order=None):
     """
     Create a comprehensive legend for all five panels, positioned outside plot area
 
@@ -943,7 +947,10 @@ def create_comprehensive_legend(fig, ax_revenue_mineral, ax_revenue_processing, 
         ax_gdp_share: Panel C (GDP share)
         ax_cost_mineral: Panel D (cost by mineral)
         ax_cost_breakdown: Panel E (cost breakdown by type)
+        cost_type_order: List of cost component names to include in legend (default: COST_TYPE_ORDER)
     """
+    if cost_type_order is None:
+        cost_type_order = COST_TYPE_ORDER
     # Mineral legend
     mineral_patches = []
     for mineral in MINERAL_ORDER:
@@ -961,7 +968,7 @@ def create_comprehensive_legend(fig, ax_revenue_mineral, ax_revenue_processing, 
 
     # Cost type legend (for Panel E)
     cost_type_patches = []
-    for cost_type in COST_TYPE_ORDER:
+    for cost_type in cost_type_order:
         color = COST_TYPE_COLORS.get(cost_type, '#999999')
         patch = mpatches.Patch(facecolor=color, label=cost_type, edgecolor='black', linewidth=0.8)
         cost_type_patches.append(patch)
@@ -1028,6 +1035,113 @@ def create_comprehensive_legend(fig, ax_revenue_mineral, ax_revenue_processing, 
     ax_revenue_mineral.add_artist(legend_mineral)
     ax_revenue_processing.add_artist(legend_processing)
     ax_cost_breakdown.add_artist(legend_cost_types)
+
+
+def plot_precursor_gdp_heatmap(ax, country_data):
+    """
+    Plot Panel C: net export revenue as % of GDP for precursor product scenarios, mid demand.
+
+    Shows absolute % GDP values (diverging: red=negative, white=0, green=positive)
+    for the four precursor variants (Prec_C_N, Prec_U_N, Prec_C_R, Prec_U_R).
+    Countries sorted by descending Prec_U_R value.
+
+    Args:
+        ax: Matplotlib axis
+        country_data: dict {scenario_label: {demand: {country_iso3: net_revenue_gdp_pct}}}
+            (output of prepare_country_net_export_revenue_gdp_data)
+    """
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+    PREC_SCENARIOS = [
+        ('Prec_C_N', 'Prec\nC_Nat'),
+        ('Prec_U_N', 'Prec\nU_Nat'),
+        ('Prec_C_R', 'Prec\nC_Reg'),
+        ('Prec_U_R', 'Prec\nU_Reg'),
+    ]
+
+    # Collect all countries present in any precursor scenario (mid demand)
+    all_countries = set()
+    for label, _ in PREC_SCENARIOS:
+        all_countries.update(country_data.get(label, {}).get('mid', {}).keys())
+
+    # Sort countries by Prec_U_R mid value, descending
+    countries_sorted = sorted(
+        all_countries,
+        key=lambda c: country_data.get('Prec_U_R', {}).get('mid', {}).get(c, 0),
+        reverse=True
+    )
+
+    n_countries = len(countries_sorted)
+    n_scenarios = len(PREC_SCENARIOS)
+
+    # Build value matrix (mid demand)
+    matrix = np.zeros((n_countries, n_scenarios))
+    for i, country in enumerate(countries_sorted):
+        for j, (label, _) in enumerate(PREC_SCENARIOS):
+            val = country_data.get(label, {}).get('mid', {}).get(country, 0)
+            if not np.isfinite(val):
+                val = 0
+            matrix[i, j] = val
+
+    # Diverging colormap: red → white → green (same as SI Panel A)
+    data_min = np.nanmin(matrix)
+    data_max = np.nanmax(matrix)
+    vmin = min(-5.0, np.floor(data_min / 5) * 5)
+    vmax = max(35.0, np.ceil(data_max / 5) * 5)
+
+    colors_neg = ['#a50026', '#f46d43', '#fdae61', '#fee08b', '#FFFFFF']
+    colors_pos = ['#FFFFFF', '#d9f0d3', '#a6dba0', '#5aae61', '#1b7837', '#00441b']
+    n_neg = int(256 * abs(vmin) / (abs(vmin) + vmax))
+    n_pos = 256 - n_neg
+    cmap_neg = LinearSegmentedColormap.from_list('RedWhite', colors_neg, N=n_neg)
+    cmap_pos = LinearSegmentedColormap.from_list('WhiteGreen', colors_pos, N=n_pos)
+    combined = np.vstack([cmap_neg(np.linspace(0, 1, n_neg)),
+                          cmap_pos(np.linspace(0, 1, n_pos))])
+    cmap = LinearSegmentedColormap.from_list('DivGreen', combined, N=256)
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+
+    im = ax.imshow(matrix, cmap=cmap, norm=norm, aspect='auto')
+
+    # Cell annotations
+    for i in range(n_countries):
+        for j in range(n_scenarios):
+            val = matrix[i, j]
+            text_color = 'white' if (val > vmax * 0.6 or val < vmin * 0.6) else 'black'
+            weight = 'bold' if abs(val) > 15.0 else 'normal'
+            text = '0' if abs(val) < 0.1 else f'{val:.1f}'
+            ax.text(j, i, text, ha='center', va='center',
+                    color=text_color, fontsize=11, weight=weight)
+
+    # Tick labels
+    ax.set_xticks(np.arange(n_scenarios))
+    ax.set_xticklabels([lbl for _, lbl in PREC_SCENARIOS], fontsize=11)
+    ax.set_yticks(np.arange(n_countries))
+    ax.set_yticklabels(countries_sorted, fontsize=11)
+
+    # Minor grid between cells
+    ax.set_xticks(np.arange(n_scenarios + 1) - 0.5, minor=True)
+    ax.set_yticks(np.arange(n_countries + 1) - 0.5, minor=True)
+    ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
+    ax.tick_params(which='minor', size=0)
+
+    ax.set_title('C) Net Export Revenue as % of GDP\n(Precursor Product, Mid Demand)',
+                 fontsize=12, fontweight='bold', pad=10)
+
+    # Colorbar
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.1)
+    cbar = ax.figure.colorbar(im, cax=cax)
+    cbar.set_label('% of GDP', fontsize=9, rotation=270, labelpad=15)
+    cbar.ax.tick_params(labelsize=8)
+    tick_vals = [vmin, 0, vmax * 0.25, vmax * 0.5, vmax * 0.75, vmax]
+    cbar.set_ticks(tick_vals)
+    cbar.set_ticklabels([f'{v:.0f}' for v in tick_vals])
+
+    print(f"    Debug Panel C: data range {data_min:.2f}% to {data_max:.2f}%, "
+          f"vmin={vmin:.0f} vmax={vmax:.0f}")
+
+    return im
 
 
 def plot_competitiveness_panel(ax, df):
@@ -1122,7 +1236,7 @@ def plot_competitiveness_panel(ax, df):
             linewidths=0.5,
             linecolor='gray',
             square=False,
-            annot_kws={'fontsize': 8, 'va': 'center'},
+            annot_kws={'fontsize': 10, 'va': 'center'},
             cbar=show_cbar,
             mask=quintile_matrix.isna()
         )
@@ -1135,12 +1249,12 @@ def plot_competitiveness_panel(ax, df):
         else:
             ax_sub.set_ylabel('')
 
-        ax_sub.set_yticklabels(ax_sub.get_yticklabels(), rotation=0, fontsize=9)
+        ax_sub.set_yticklabels(ax_sub.get_yticklabels(), rotation=0, fontsize=11)
         # Use abbreviated mineral names to avoid overlap
         mineral_abbrev = {'copper': 'Cu', 'cobalt': 'Co', 'nickel': 'Ni',
                           'manganese': 'Mn', 'lithium': 'Li', 'graphite': 'Gr'}
         ax_sub.set_xticklabels([mineral_abbrev.get(m, m[:2]) for m in COMP_MINERAL_ORDER],
-                               rotation=0, ha='center', fontsize=9)
+                               rotation=0, ha='center', fontsize=11)
 
     # Add Panel F label above the heatmaps using figure coordinates
     # Position it at the top-left of the Panel F area with sufficient clearance
@@ -1149,6 +1263,92 @@ def plot_competitiveness_panel(ax, df):
                    'F) Competitiveness for Precursor U',
                    fontsize=12, fontweight='bold',
                    va='bottom', ha='left')
+
+
+def prepare_operational_cost_data(df):
+    """
+    Prepare energy + transport cost data by mineral and by component for Panels D & E.
+
+    Excludes production costs (which mix capex and opex and cannot be compared directly
+    to annual revenues). Only includes:
+      - Transport: export_transport_cost_usd + import_transport_cost_usd
+      - Energy:    energy_investment_usd + energy_opex
+
+    Returns:
+        tuple: (cost_mineral_data, cost_breakdown_data)
+            cost_mineral_data:   Dict[scenario_label][demand][mineral] = cost (USD)
+            cost_breakdown_data: Dict[scenario_label][demand][component] = cost (USD)
+                                 components are 'Transport' and 'Energy'
+    """
+    df_processing = df[df['processing_stage'] > 0].copy()
+
+    cost_mineral_data = {}
+    cost_breakdown_data = {}
+
+    for goal, policy, constraint, label in SCENARIO_CONFIG:
+        cost_mineral_data[label] = {'low': {}, 'mid': {}, 'high': {}}
+        cost_breakdown_data[label] = {'low': {}, 'mid': {}, 'high': {}}
+
+        if goal == 'baseline':
+            scenario_name = '2022_baseline'
+            df_scenario = df_processing[df_processing['scenario'] == scenario_name].copy()
+
+            if df_scenario.empty:
+                print(f"Warning: No data for {label}")
+                continue
+
+            df_scenario['operational_cost_usd'] = (
+                df_scenario['export_transport_cost_usd'] +
+                df_scenario['import_transport_cost_usd'] +
+                df_scenario['energy_investment_usd'] +
+                df_scenario['energy_opex']
+            )
+
+            for demand in ['low', 'mid', 'high']:
+                by_mineral = df_scenario.groupby('reference_mineral')['operational_cost_usd'].sum()
+                for mineral in MINERAL_ORDER:
+                    cost_mineral_data[label][demand][mineral] = by_mineral.get(mineral, 0)
+
+                transport = (df_scenario['export_transport_cost_usd'].sum() +
+                             df_scenario['import_transport_cost_usd'].sum())
+                energy = (df_scenario['energy_investment_usd'].sum() +
+                          df_scenario['energy_opex'].sum())
+                cost_breakdown_data[label][demand]['Transport'] = transport
+                cost_breakdown_data[label][demand]['Energy'] = energy
+
+        else:
+            for demand in ['low', 'mid', 'high']:
+                scenario_name = f'{goal}_2040_{demand}_{policy}_threshold_metal_tons'
+                constraint_col = f'country_{constraint}' if policy == 'min' else f'region_{constraint}'
+
+                df_scenario = df_processing[
+                    (df_processing['scenario'] == scenario_name) &
+                    (df_processing['constraint'] == constraint_col)
+                ].copy()
+
+                if df_scenario.empty:
+                    print(f"Warning: No data for {label} {demand} demand")
+                    continue
+
+                df_scenario['operational_cost_usd'] = (
+                    df_scenario['export_transport_cost_usd'] +
+                    df_scenario['import_transport_cost_usd'] +
+                    df_scenario['energy_investment_usd'] +
+                    df_scenario['energy_opex']
+                )
+
+                by_mineral = df_scenario.groupby('reference_mineral')['operational_cost_usd'].sum()
+                for mineral in MINERAL_ORDER:
+                    cost_mineral_data[label][demand][mineral] = by_mineral.get(mineral, 0)
+
+                transport = (df_scenario['export_transport_cost_usd'].sum() +
+                             df_scenario['import_transport_cost_usd'].sum())
+                energy = (df_scenario['energy_investment_usd'].sum() +
+                          df_scenario['energy_opex'].sum())
+                cost_breakdown_data[label][demand]['Transport'] = transport
+                cost_breakdown_data[label][demand]['Energy'] = energy
+
+    return cost_mineral_data, cost_breakdown_data
 
 
 def create_economic_indicators_figure(df, output_dir):
@@ -1468,6 +1668,150 @@ def create_economic_indicators_figure_net_revenue(df, output_dir):
     return saved_paths
 
 
+def create_economic_indicators_figure_operational_costs(df, output_dir):
+    """
+    Generate economic indicators figure with net export revenues and operational costs only.
+
+    Identical to create_economic_indicators_figure_net_revenue except Panels D & E show
+    only energy + transport costs (excluding production costs, which mix capex and opex
+    and are not directly comparable to annual revenue flows).
+
+    Args:
+        df: Main data DataFrame
+        output_dir: Output directory for figure
+
+    Returns:
+        List of saved file paths
+    """
+    print("  Generating economic indicators figure (net revenue, operational costs only)...")
+
+    plt.style.use('default')
+    for key, value in PUBLICATION_STYLE.items():
+        plt.rcParams[key] = value
+
+    # Panels A & B: net export revenue
+    net_revenue_mineral_data, net_revenue_processing_data = prepare_net_export_revenue_data(df)
+
+    # Panel C: net export revenue as % GDP (precursor scenarios, mid demand, absolute values)
+    country_gdp_data = prepare_country_net_export_revenue_gdp_data(df)
+
+    # Panels D & E: operational costs (energy + transport only)
+    op_cost_mineral_data, op_cost_breakdown_data = prepare_operational_cost_data(df)
+
+    # Build figure
+    fig = plt.figure(figsize=(17, 17))
+
+    main_gs = fig.add_gridspec(3, 1,
+                               height_ratios=[1, 1, 1.9],
+                               hspace=0.30,
+                               left=0.08, right=0.95, top=0.94, bottom=0.10)
+
+    row1_gs = main_gs[0].subgridspec(1, 2, wspace=0.45)
+    ax_rev_mineral = fig.add_subplot(row1_gs[0, 0])
+    ax_cost_mineral = fig.add_subplot(row1_gs[0, 1])
+
+    row2_gs = main_gs[1].subgridspec(1, 2, wspace=0.45)
+    ax_rev_processing = fig.add_subplot(row2_gs[0, 0])
+    ax_cost_breakdown = fig.add_subplot(row2_gs[0, 1])
+
+    row3_gs = main_gs[2].subgridspec(1, 2, wspace=0.35, width_ratios=[0.7, 1.3])
+    ax_gdp = fig.add_subplot(row3_gs[0, 0])
+    ax_competitiveness = fig.add_subplot(row3_gs[0, 1])
+
+    # Panel A: Net Export Revenue by Mineral
+    y_positions = plot_stacked_revenue_panel(
+        ax_rev_mineral, net_revenue_mineral_data,
+        stack_order=MINERAL_ORDER,
+        colors=reference_mineral_colormap,
+        title='A) Net Export Revenue by Mineral',
+        xlabel='Net Revenue (Billion USD)'
+    )
+
+    # Panel B: Net Export Revenue by Processing Type
+    plot_stacked_revenue_panel(
+        ax_rev_processing, net_revenue_processing_data,
+        stack_order=PROCESSING_ORDER,
+        colors=PROCESSING_TYPE_COLORS,
+        title='B) Net Export Revenue by Processing Type',
+        xlabel='Net Revenue (Billion USD)'
+    )
+
+    # Panel C: Net Export Revenue as % GDP (precursor, mid demand, absolute values)
+    plot_precursor_gdp_heatmap(ax_gdp, country_gdp_data)
+
+    # Panel D: Operational Cost by Mineral (transport + energy only)
+    plot_stacked_revenue_panel(
+        ax_cost_mineral, op_cost_mineral_data,
+        stack_order=MINERAL_ORDER,
+        colors=reference_mineral_colormap,
+        title='D) Operational Cost by Mineral\n(Transport + Energy)',
+        xlabel='Cost (Billion USD)'
+    )
+
+    # Panel E: Operational Cost by Component (transport + energy only)
+    plot_stacked_revenue_panel(
+        ax_cost_breakdown, op_cost_breakdown_data,
+        stack_order=OPERATIONAL_COST_TYPE_ORDER,
+        colors=COST_TYPE_COLORS,
+        title='E) Operational Cost by Component\n(Transport + Energy)',
+        xlabel='Cost (Billion USD)'
+    )
+
+    # Panel F: Competitiveness matrix
+    plot_competitiveness_panel(ax_competitiveness, df)
+
+    # Set consistent x-axis limits across revenue panels (A, B)
+    # Keep cost panels (D, E) on their own scale since they're much smaller than revenues
+    max_rev_xlim = max(
+        ax_rev_mineral.get_xlim()[1],
+        ax_rev_processing.get_xlim()[1],
+    )
+    ax_rev_mineral.set_xlim(0, max_rev_xlim)
+    ax_rev_processing.set_xlim(0, max_rev_xlim)
+
+    max_cost_xlim = max(
+        ax_cost_mineral.get_xlim()[1],
+        ax_cost_breakdown.get_xlim()[1],
+    )
+    ax_cost_mineral.set_xlim(0, max_cost_xlim)
+    ax_cost_breakdown.set_xlim(0, max_cost_xlim)
+
+    # Y-axis labels
+    y_labels = [label for _, _, _, label in SCENARIO_CONFIG]
+    ax_rev_mineral.set_yticklabels(y_labels, fontsize=9)
+    ax_rev_processing.set_yticklabels(y_labels, fontsize=9)
+    ax_cost_mineral.set_yticklabels(y_labels, fontsize=9)
+    ax_cost_breakdown.set_yticklabels(y_labels, fontsize=9)
+
+    fig.suptitle('Economic Indicators', fontsize=14, fontweight='bold', y=0.98)
+
+    create_comprehensive_legend(fig, ax_rev_mineral, ax_rev_processing, ax_gdp,
+                                ax_cost_mineral, ax_cost_breakdown,
+                                cost_type_order=OPERATIONAL_COST_TYPE_ORDER)
+
+    # Save
+    saved_paths = []
+    base = 'economic_indicators_six_panel_operational_costs'
+
+    png_path = os.path.join(output_dir, f'{base}.png')
+    plt.savefig(png_path, dpi=DPI_PUBLICATION, bbox_inches='tight', facecolor='white')
+    saved_paths.append(png_path)
+    print(f"    ✓ Saved: {os.path.basename(png_path)}")
+
+    pdf_path = os.path.join(output_dir, f'{base}.pdf')
+    plt.savefig(pdf_path, format='pdf', bbox_inches='tight', facecolor='white')
+    saved_paths.append(pdf_path)
+    print(f"    ✓ Saved: {os.path.basename(pdf_path)}")
+
+    preview_path = os.path.join(output_dir, f'{base}_preview.png')
+    plt.savefig(preview_path, dpi=DPI_SCREEN, bbox_inches='tight', facecolor='white')
+    saved_paths.append(preview_path)
+    print(f"    ✓ Saved: {os.path.basename(preview_path)}")
+
+    plt.close(fig)
+    return saved_paths
+
+
 def generate_economic_indicators_figures(df, output_dir):
     """
     Main entry point for generating economic indicators figures
@@ -1485,6 +1829,10 @@ def generate_economic_indicators_figures(df, output_dir):
     # Generate six-panel figure with net export revenue
     net_revenue_paths = create_economic_indicators_figure_net_revenue(df, output_dir)
     saved_paths.extend(net_revenue_paths)
+
+    # Generate six-panel figure with net export revenue and operational costs only
+    op_cost_paths = create_economic_indicators_figure_operational_costs(df, output_dir)
+    saved_paths.extend(op_cost_paths)
 
     # Generate SI GDP heatmaps
     try:

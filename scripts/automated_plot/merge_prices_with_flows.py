@@ -5,13 +5,14 @@ Merge Price and Cost Data with Tonnage Flows
 This script merges price_usd_per_tonne and production_cost_usd_per_tonne from
 all_data.xlsx with tonnage_flows_comprehensive.xlsx to calculate net export revenues.
 
-Formula (CORRECTED):
+Formula:
 - Export revenue = final_stage_production_tons × price_usd_per_tonne (from final stage)
 - Import cost = final_stage_production_tons × unit_cost (from final stage)
-  where unit_cost can be either production_cost_usd_per_tonne or price_usd_per_tonne
+  Applied to all import flows including stage-0. For stage-0 imports the final-stage
+  price is used as a proxy for the opportunity cost of the imported raw material.
+  Note: stage-0 raw material prices are not explicitly modelled; using the final-stage
+  price as proxy is a methodological choice documented in the paper methods section.
 - Net export revenue = Export revenue - Import cost
-
-Both production cost and price are provided for final stage to allow flexibility in analysis.
 
 Usage:
     python merge_prices_with_flows.py
@@ -132,7 +133,8 @@ def merge_prices_with_flows():
     print("="*80)
     print()
 
-    print("IMPORTANT: Now using final_stage_production_tons for BOTH exports and imports")
+    print("Exports use final_stage_production_tons × final_stage_price")
+    print("Imports use final_stage_production_tons × final_stage_price/cost (all import flows)")
     print()
 
     # Calculate export revenue (for Export flows only)
@@ -148,8 +150,7 @@ def merge_prices_with_flows():
     print(f"Total export revenue: ${total_export_revenue:.2f} billion")
     print(f"  (final_stage_production_tons × final_stage_price)")
 
-    # Calculate import cost using PRODUCTION COST (for Import flows only)
-    # Uses: final_stage_production_tons × final_stage_production_cost_usd_per_tonne
+    # Calculate import cost using PRODUCTION COST (for all Import flows)
     df_merged['import_cost_usd'] = 0.0
     import_mask = df_merged['trade_type'].str.contains('Import', na=False)
     df_merged.loc[import_mask, 'import_cost_usd'] = (
@@ -312,14 +313,10 @@ def merge_prices_with_flows():
     print("CALCULATION SUMMARY")
     print("="*80)
     print()
-    print("✓ Both exports and imports now use final_stage_production_tons")
-    print("✓ Both production cost and market price calculations provided")
-    print("✓ import_cost_usd = production cost basis (default)")
-    print("✓ import_cost_at_price_usd = market price basis (alternative)")
-    print()
-    print("Choose which approach to use in your analysis based on:")
-    print("  - Production cost: Shows value creation potential")
-    print("  - Market price: Shows actual cash flows/trade balance")
+    print("✓ Export revenue: final_stage_production_tons × final_stage_price")
+    print("✓ Import cost: final_stage_production_tons × final_stage_price/cost (all imports)")
+    print("✓ import_cost_usd = production cost basis")
+    print("✓ import_cost_at_price_usd = market price basis")
     print()
     print("✓ Merge successful!")
 
